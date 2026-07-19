@@ -1,0 +1,1 @@
+﻿Dev keystore not generated yet — run Tools\CreateDevKeystore.ps1 after installing JDK/Android OpenJDK.
