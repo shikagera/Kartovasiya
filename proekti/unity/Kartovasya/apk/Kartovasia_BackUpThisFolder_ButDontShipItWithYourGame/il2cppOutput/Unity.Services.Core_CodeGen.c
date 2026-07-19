@@ -1,0 +1,153 @@
+﻿#include "pch-c.h"
+
+
+#include "codegen/il2cpp-codegen-metadata.h"
+
+
+
+
+
+extern void CoreResetter_Register_m0771E7D7BF54D0AEBBCE440BC3481C63730CD447 (void);
+extern void CoreResetter_ExecuteResets_m9ECD86946FFABBD8E9C3FDA09E1F315463B86FCB (void);
+extern void CoreResetter_RegisterCoreCallbacks_m4FE1972C84FDBF0179B178E81D205368C3324EE8 (void);
+extern void CoreResetter__cctor_m8FEC6A7B6F289ACC7AD7B7B4A75A8F24E1115F32 (void);
+extern void ExternalUserIdProperty_get_UserId_mF463E7814BFC0294128FEB39259BEB00692F3295 (void);
+extern void ExternalUserIdProperty_set_UserId_m49AF583912638B80D441E07E46D5743BC8FA50E7 (void);
+extern void ExternalUserIdProperty__ctor_m2FEBC14C2B8A45DEE3B1250F0B577EB3B8F629F7 (void);
+extern void InitializationOptions_get_Values_m9D5E5B39B0E681240EC6C34E848D201B625A497B (void);
+extern void InitializationOptions__ctor_m2D43EFD29B0A3E387D43FA9395F7D960D667E8F0 (void);
+extern void InitializationOptions__ctor_mC00A133821529371B703109EC8884F73D3A43504 (void);
+extern void InitializationOptions__ctor_mACA25E99BB9C236F1D65A7BBC84AC194E201FB80 (void);
+extern void ServicesInitializationException__ctor_m92C4F3ACACE7EC3753B8BFEE082221D752CA751C (void);
+extern void ServicesInitializationException__ctor_m638AF9055D8C8C6BA7AC554FF3066C26EA869F55 (void);
+extern void ServicesInitializationException__ctor_mF669B3E2EBFCAF30637035325CD9B965BC11B578 (void);
+extern void UnityProjectNotLinkedException__ctor_mAD5451CE9BDD12E0F183D8E7BA09A469A6C197A1 (void);
+extern void UnityServices_get_Instance_m5BA0D657E90B0A0837290E98A0CB13F9D39CA0CD (void);
+extern void UnityServices_set_Instance_m4C250363E94392D1578BEDE13EF067416804C85C (void);
+extern void UnityServices_get_InstantiationCompletion_mA867A00609D9BFFD19B8404887CA781DB60F0AE7 (void);
+extern void UnityServices_set_InstantiationCompletion_mA4D8862E87057DD28B48E93BDA0545E5CDCE8DEC (void);
+extern void UnityServices_get_s_Services_m9F3D64BA884CA80A49389872278670B04E04D328 (void);
+extern void UnityServices_get_ExternalUserId_m5028564FBDCC1965850DA78BC91CCA7FF4369AF8 (void);
+extern void UnityServices_set_ExternalUserId_m3D68213DAB808F69A5A8DA5F2C22AA1136C59365 (void);
+extern void UnityServices_ResetStaticsOnLoad_mFA2323FB717C858489CB85F5FFE395C52ABB934B (void);
+extern void UnityServices_InitializeAsync_mDC1CB3B695B5497E7159CE261445C907B26D223A (void);
+extern void UnityServices_InitializeAsync_m06F67CD34C2A60139443202D98F16E7130CB6A1F (void);
+extern void UnityServices_ClearServices_mBC2CDFCB4E13BD3731EA71869A4A0FA24F0FC231 (void);
+extern void UnityServices__cctor_m995156A0F59490005C1FA05F9EE6FBF92E1E1485 (void);
+extern void U3CInitializeAsyncU3Ed__27_MoveNext_m2F0806290299F97B5291535107EC04A90FDF0B16 (void);
+extern void U3CInitializeAsyncU3Ed__27_SetStateMachine_m0D863130352AE11671635A9142DBE233D98C83A0 (void);
+extern void UnityServicesBuilder_set_InstanceCreationDelegate_mBCC2200B260D7106E227E3E250751D9D78581D1B (void);
+extern void UnityServicesBuilder_ResetStaticsOnLoad_m1969AFC2A449B8F19198CBCB80A1E1A7E7582F65 (void);
+extern void CreationDelegate__ctor_m15500C935179FC8F15EC963D1C493B8CE39941BC (void);
+extern void CreationDelegate_Invoke_m20E65CCEE00325987A0ADA23B85E2987A7BF9DBB (void);
+extern void UnityThreadUtils_set_UnityThreadScheduler_m5AE27DBA9F88FE1CDCB8FBF241A3C1B5628F9BB6 (void);
+extern void UnityThreadUtils_CaptureUnityThreadInfo_m43D8C684F01F8CA911A1D6E80E7E70CC1A0CF579 (void);
+extern void UnityThreadUtils_get_IsRunningOnUnityThread_m5FD8E9090E2A2EE035677BC109B12A234B91A1B4 (void);
+static Il2CppMethodPointer s_methodPointers[37] = 
+{
+	CoreResetter_Register_m0771E7D7BF54D0AEBBCE440BC3481C63730CD447,
+	CoreResetter_ExecuteResets_m9ECD86946FFABBD8E9C3FDA09E1F315463B86FCB,
+	CoreResetter_RegisterCoreCallbacks_m4FE1972C84FDBF0179B178E81D205368C3324EE8,
+	CoreResetter__cctor_m8FEC6A7B6F289ACC7AD7B7B4A75A8F24E1115F32,
+	ExternalUserIdProperty_get_UserId_mF463E7814BFC0294128FEB39259BEB00692F3295,
+	ExternalUserIdProperty_set_UserId_m49AF583912638B80D441E07E46D5743BC8FA50E7,
+	ExternalUserIdProperty__ctor_m2FEBC14C2B8A45DEE3B1250F0B577EB3B8F629F7,
+	NULL,
+	InitializationOptions_get_Values_m9D5E5B39B0E681240EC6C34E848D201B625A497B,
+	InitializationOptions__ctor_m2D43EFD29B0A3E387D43FA9395F7D960D667E8F0,
+	InitializationOptions__ctor_mC00A133821529371B703109EC8884F73D3A43504,
+	InitializationOptions__ctor_mACA25E99BB9C236F1D65A7BBC84AC194E201FB80,
+	ServicesInitializationException__ctor_m92C4F3ACACE7EC3753B8BFEE082221D752CA751C,
+	ServicesInitializationException__ctor_m638AF9055D8C8C6BA7AC554FF3066C26EA869F55,
+	ServicesInitializationException__ctor_mF669B3E2EBFCAF30637035325CD9B965BC11B578,
+	UnityProjectNotLinkedException__ctor_mAD5451CE9BDD12E0F183D8E7BA09A469A6C197A1,
+	UnityServices_get_Instance_m5BA0D657E90B0A0837290E98A0CB13F9D39CA0CD,
+	UnityServices_set_Instance_m4C250363E94392D1578BEDE13EF067416804C85C,
+	UnityServices_get_InstantiationCompletion_mA867A00609D9BFFD19B8404887CA781DB60F0AE7,
+	UnityServices_set_InstantiationCompletion_mA4D8862E87057DD28B48E93BDA0545E5CDCE8DEC,
+	UnityServices_get_s_Services_m9F3D64BA884CA80A49389872278670B04E04D328,
+	UnityServices_get_ExternalUserId_m5028564FBDCC1965850DA78BC91CCA7FF4369AF8,
+	UnityServices_set_ExternalUserId_m3D68213DAB808F69A5A8DA5F2C22AA1136C59365,
+	UnityServices_ResetStaticsOnLoad_mFA2323FB717C858489CB85F5FFE395C52ABB934B,
+	UnityServices_InitializeAsync_mDC1CB3B695B5497E7159CE261445C907B26D223A,
+	UnityServices_InitializeAsync_m06F67CD34C2A60139443202D98F16E7130CB6A1F,
+	UnityServices_ClearServices_mBC2CDFCB4E13BD3731EA71869A4A0FA24F0FC231,
+	UnityServices__cctor_m995156A0F59490005C1FA05F9EE6FBF92E1E1485,
+	U3CInitializeAsyncU3Ed__27_MoveNext_m2F0806290299F97B5291535107EC04A90FDF0B16,
+	U3CInitializeAsyncU3Ed__27_SetStateMachine_m0D863130352AE11671635A9142DBE233D98C83A0,
+	UnityServicesBuilder_set_InstanceCreationDelegate_mBCC2200B260D7106E227E3E250751D9D78581D1B,
+	UnityServicesBuilder_ResetStaticsOnLoad_m1969AFC2A449B8F19198CBCB80A1E1A7E7582F65,
+	CreationDelegate__ctor_m15500C935179FC8F15EC963D1C493B8CE39941BC,
+	CreationDelegate_Invoke_m20E65CCEE00325987A0ADA23B85E2987A7BF9DBB,
+	UnityThreadUtils_set_UnityThreadScheduler_m5AE27DBA9F88FE1CDCB8FBF241A3C1B5628F9BB6,
+	UnityThreadUtils_CaptureUnityThreadInfo_m43D8C684F01F8CA911A1D6E80E7E70CC1A0CF579,
+	UnityThreadUtils_get_IsRunningOnUnityThread_m5FD8E9090E2A2EE035677BC109B12A234B91A1B4,
+};
+extern void U3CInitializeAsyncU3Ed__27_MoveNext_m2F0806290299F97B5291535107EC04A90FDF0B16_AdjustorThunk (void);
+extern void U3CInitializeAsyncU3Ed__27_SetStateMachine_m0D863130352AE11671635A9142DBE233D98C83A0_AdjustorThunk (void);
+static Il2CppTokenAdjustorThunkPair s_adjustorThunks[2] = 
+{
+	{ 0x0600001D, U3CInitializeAsyncU3Ed__27_MoveNext_m2F0806290299F97B5291535107EC04A90FDF0B16_AdjustorThunk },
+	{ 0x0600001E, U3CInitializeAsyncU3Ed__27_SetStateMachine_m0D863130352AE11671635A9142DBE233D98C83A0_AdjustorThunk },
+};
+static const int32_t s_InvokerIndices[37] = 
+{
+	5185,
+	5368,
+	5368,
+	5368,
+	2419,
+	2192,
+	2557,
+	-1,
+	2419,
+	2557,
+	2192,
+	2192,
+	2557,
+	2192,
+	1460,
+	2192,
+	5278,
+	5185,
+	5278,
+	5185,
+	5278,
+	5278,
+	5185,
+	5368,
+	5278,
+	4665,
+	5368,
+	5368,
+	2557,
+	2192,
+	5185,
+	5368,
+	1473,
+	1691,
+	5185,
+	5368,
+	5283,
+};
+IL2CPP_EXTERN_C const Il2CppCodeGenModule g_Unity_Services_Core_CodeGenModule;
+const Il2CppCodeGenModule g_Unity_Services_Core_CodeGenModule = 
+{
+	"Unity.Services.Core.dll",
+	37,
+	s_methodPointers,
+	2,
+	s_adjustorThunks,
+	s_InvokerIndices,
+	0,
+	NULL,
+	0,
+	NULL,
+	0,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+};

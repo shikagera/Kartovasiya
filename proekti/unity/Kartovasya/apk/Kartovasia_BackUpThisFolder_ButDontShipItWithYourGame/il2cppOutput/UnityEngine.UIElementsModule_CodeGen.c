@@ -1,0 +1,352 @@
+﻿#include "pch-c.h"
+
+
+#include "codegen/il2cpp-codegen-metadata.h"
+
+
+
+
+
+extern void EmbeddedAttribute__ctor_mD39C25AACFC0ED080CB375155DEBCA852668B4DE (void);
+extern void RefSafetyRulesAttribute__ctor_m66C7929899D1160F37F80348F15DE31E9693FBF8 (void);
+extern void KeyboardEventExtensions_ShouldSendNavigationMoveEventRuntime_mE115DCF9A83C6D801DEF4DCEEF402C78A2ED31C1 (void);
+extern void PointerType__cctor_mC0CE92C3808862FCF47294B692085540D250A028 (void);
+extern void PointerId__cctor_m3BB8C9F77AFE8746AC37B7E20F963C22BAC222D6 (void);
+extern void PanelInputState_get_current_m84D168B44775977C801CB4F0E1BB876C2204B2AB (void);
+extern void PanelInputSettings_get_Default_m489504E492EDFA286F7CF0F7906702ACE3636244 (void);
+extern void PanelInputSettings_get_processWorldSpaceInput_mFF7F8E3CBB777701F57FA4C28D92729E9A224347 (void);
+extern void PanelInputSettings_get_interactionLayers_m6A82DF737D92396E81980FA1937505AC6AF0D25E (void);
+extern void PanelInputSettings_get_maxInteractionDistance_m38D4CA84FD4CDB78B6C9E6C289D375D7F96066B3 (void);
+extern void PanelInputSettings_get_defaultEventCameraIsMainCamera_mDB95183F2EB6864022D8E23BBF35C6FFB4FCFB1D (void);
+extern void PanelInputSettings_get_eventCameras_m11C55A86720D76A53F2A130092CF6D76EFC0C472 (void);
+extern void PanelInputSettings_get_autoCreatePanelComponents_m72D7325B9E57366B28617F3FC42151959EFD2EE1 (void);
+extern void PanelInputSettings_get_shouldRedirectInput_m0B63F6074A80887627F7A439548389711101CD2D (void);
+extern void PanelInputSettings__cctor_m6AA86B324B1A49D3C0C982DF552CAEA4ED3764BB (void);
+extern void IRuntimePanel_get_uIElementsRuntimeUtility_m0F84F456439695E51404993CA7BBB2D15DE83A80 (void);
+extern void IRuntimePanel_get_pointerDeviceState_m83C7289F966DEE381F99F51766CEF7010A1E9A65 (void);
+extern void UIRUtility_Destroy_m9E925E79E7B4A4853B47C1EFACEF2ED0A7844A23 (void);
+extern void UIRUtility__cctor_m467B47359B3F52D1C3261BF6741239AD0CDDD348 (void);
+extern void Specificity_get_idScore_m63F4090A720F27F88514EDAA7957BC97F228FBCE (void);
+extern void Specificity_get_classScore_m8744C401FDF1301B05AECD3ED83CEA8C31DA7186 (void);
+extern void Specificity_get_typeScore_m65AD65A6299071BE777CA8DEEA703C8087E2372F (void);
+extern void Specificity_GetValueFromMask_m3DDED301DDF3CD26CB7EDA0D1A765ACF8D7D6F8E (void);
+extern void Specificity_ToString_m6A52CDB541A711557A07006C2CDB69E5F36A363E (void);
+extern void Specificity_Equals_mA1488C5B58042A5AFD8221E0D10EA9CE3DAFB91C (void);
+extern void Specificity_Equals_m355979F573D77BFCDE78E5AF03356F8F4EECCF05 (void);
+extern void Specificity_GetHashCode_m53BA93AD2E29658BD3EE752B94CEF3602F9A4031 (void);
+extern void Specificity_CompareTo_m7211CB0298A36CC05C4BB543B88F668F6030526C (void);
+extern void StyleComplexSelector__ctor_m0F68D626FD86D6BF1E91C8653BAF4351A0DA104A (void);
+extern void StyleComplexSelector_ToString_mFFF369A5245D6F443E211BD3036FA09104FF55D5 (void);
+extern void StyleComplexSelector__cctor_m28232375BF6632F7E802282D03D13E4AF2B30E43 (void);
+extern void U3CU3Ec__cctor_mA8B8FEB99A867F807F1D4D48099215CFD923576F (void);
+extern void U3CU3Ec__ctor_m81F077066F40A8A008276E89847ECC84A0514518 (void);
+extern void U3CU3Ec_U3CToStringU3Eb__23_0_m29F937F9DFFDF3036CCFB80796A8D133D9D2CA52 (void);
+extern void StyleProperty__ctor_m1BF9FE5A92A4453BC7F204283C26EFCE318CF9E2 (void);
+extern void StyleSelector_get_parts_mE6EEAE6825862DDA89947B892B661A865D463CEF (void);
+extern void StyleSelector_ToString_m7A5A7849FCDD4226C1B58E7B29D16FE5D7E72F30 (void);
+extern void StyleSelector__ctor_m873E58D9169C86020A1E6030255566AF23DEC361 (void);
+extern void U3CU3Ec__cctor_m16BB7356DD5B4EE1FB4A1DF7A668762513395379 (void);
+extern void U3CU3Ec__ctor_mE85524E8229C6FF445591B04165E06152546EC91 (void);
+extern void U3CU3Ec_U3CToStringU3Eb__11_0_mC2FD22AABBD30772AC75C521D51A19C0F13ECE9B (void);
+extern void StyleSelectorPart_get_value_mDE127D4691DDFF4F0F468DC08C0EB5248E0EE4D8 (void);
+extern void StyleSelectorPart_get_type_m6543B5C01CBAC70D614A461800F50A67B0DD9818 (void);
+extern void StyleSelectorPart_ToString_m894031E7CAE358204F8D1C334B76DD44A6775BB8 (void);
+extern void StyleSheetUtility_GetDimensionUnitExportString_mF9D0C8FF9C6728E99B53C30C9B61AD26D9D1395B (void);
+extern void StyleSheetUtility__cctor_mCDCEAD95888293E53FE4AF996DFD4A2F2724EA9F (void);
+extern void StyleValueHandle_Equals_mF4A4CA11C8C1206D79535DF63D52827F194C481B (void);
+extern void StyleValueHandle_Equals_mE8B0B0BF384A7B2DB344F61CA4523EA9F083CBA2 (void);
+extern void StyleValueHandle_GetHashCode_mD7775BFFF9CE17E738D6E9485D19829BBA4ABE06 (void);
+extern void Shaders__cctor_m06282ACC2F5344B37C455BC5718897333DB77E3E (void);
+extern void Dimension_op_Equality_m62AA7BA544C469C8F7BA7627FE939449344734BA (void);
+extern void Dimension_Equals_m69EF6D0CFFF463E6BE9FA658B90BABFF841FCCD4 (void);
+extern void Dimension_Equals_m4D328F20818BA59A8984495E22DE4CDEE086CC1D (void);
+extern void Dimension_GetHashCode_m665D3E075D966FBBFD741531CD95AE3AFB01BB5D (void);
+extern void Dimension_ToString_m8E30603B70E83ECF45534EACD0812DAD3BE1F455 (void);
+static Il2CppMethodPointer s_methodPointers[104] = 
+{
+	EmbeddedAttribute__ctor_mD39C25AACFC0ED080CB375155DEBCA852668B4DE,
+	RefSafetyRulesAttribute__ctor_m66C7929899D1160F37F80348F15DE31E9693FBF8,
+	KeyboardEventExtensions_ShouldSendNavigationMoveEventRuntime_mE115DCF9A83C6D801DEF4DCEEF402C78A2ED31C1,
+	PointerType__cctor_mC0CE92C3808862FCF47294B692085540D250A028,
+	PointerId__cctor_m3BB8C9F77AFE8746AC37B7E20F963C22BAC222D6,
+	NULL,
+	PanelInputState_get_current_m84D168B44775977C801CB4F0E1BB876C2204B2AB,
+	PanelInputSettings_get_Default_m489504E492EDFA286F7CF0F7906702ACE3636244,
+	PanelInputSettings_get_processWorldSpaceInput_mFF7F8E3CBB777701F57FA4C28D92729E9A224347,
+	PanelInputSettings_get_interactionLayers_m6A82DF737D92396E81980FA1937505AC6AF0D25E,
+	PanelInputSettings_get_maxInteractionDistance_m38D4CA84FD4CDB78B6C9E6C289D375D7F96066B3,
+	PanelInputSettings_get_defaultEventCameraIsMainCamera_mDB95183F2EB6864022D8E23BBF35C6FFB4FCFB1D,
+	PanelInputSettings_get_eventCameras_m11C55A86720D76A53F2A130092CF6D76EFC0C472,
+	PanelInputSettings_get_autoCreatePanelComponents_m72D7325B9E57366B28617F3FC42151959EFD2EE1,
+	PanelInputSettings_get_shouldRedirectInput_m0B63F6074A80887627F7A439548389711101CD2D,
+	PanelInputSettings__cctor_m6AA86B324B1A49D3C0C982DF552CAEA4ED3764BB,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	IRuntimePanel_get_uIElementsRuntimeUtility_m0F84F456439695E51404993CA7BBB2D15DE83A80,
+	IRuntimePanel_get_pointerDeviceState_m83C7289F966DEE381F99F51766CEF7010A1E9A65,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	UIRUtility_Destroy_m9E925E79E7B4A4853B47C1EFACEF2ED0A7844A23,
+	UIRUtility__cctor_m467B47359B3F52D1C3261BF6741239AD0CDDD348,
+	Specificity_get_idScore_m63F4090A720F27F88514EDAA7957BC97F228FBCE,
+	Specificity_get_classScore_m8744C401FDF1301B05AECD3ED83CEA8C31DA7186,
+	Specificity_get_typeScore_m65AD65A6299071BE777CA8DEEA703C8087E2372F,
+	Specificity_GetValueFromMask_m3DDED301DDF3CD26CB7EDA0D1A765ACF8D7D6F8E,
+	Specificity_ToString_m6A52CDB541A711557A07006C2CDB69E5F36A363E,
+	Specificity_Equals_mA1488C5B58042A5AFD8221E0D10EA9CE3DAFB91C,
+	Specificity_Equals_m355979F573D77BFCDE78E5AF03356F8F4EECCF05,
+	Specificity_GetHashCode_m53BA93AD2E29658BD3EE752B94CEF3602F9A4031,
+	Specificity_CompareTo_m7211CB0298A36CC05C4BB543B88F668F6030526C,
+	StyleComplexSelector__ctor_m0F68D626FD86D6BF1E91C8653BAF4351A0DA104A,
+	StyleComplexSelector_ToString_mFFF369A5245D6F443E211BD3036FA09104FF55D5,
+	StyleComplexSelector__cctor_m28232375BF6632F7E802282D03D13E4AF2B30E43,
+	U3CU3Ec__cctor_mA8B8FEB99A867F807F1D4D48099215CFD923576F,
+	U3CU3Ec__ctor_m81F077066F40A8A008276E89847ECC84A0514518,
+	U3CU3Ec_U3CToStringU3Eb__23_0_m29F937F9DFFDF3036CCFB80796A8D133D9D2CA52,
+	StyleProperty__ctor_m1BF9FE5A92A4453BC7F204283C26EFCE318CF9E2,
+	StyleSelector_get_parts_mE6EEAE6825862DDA89947B892B661A865D463CEF,
+	StyleSelector_ToString_m7A5A7849FCDD4226C1B58E7B29D16FE5D7E72F30,
+	StyleSelector__ctor_m873E58D9169C86020A1E6030255566AF23DEC361,
+	U3CU3Ec__cctor_m16BB7356DD5B4EE1FB4A1DF7A668762513395379,
+	U3CU3Ec__ctor_mE85524E8229C6FF445591B04165E06152546EC91,
+	U3CU3Ec_U3CToStringU3Eb__11_0_mC2FD22AABBD30772AC75C521D51A19C0F13ECE9B,
+	StyleSelectorPart_get_value_mDE127D4691DDFF4F0F468DC08C0EB5248E0EE4D8,
+	StyleSelectorPart_get_type_m6543B5C01CBAC70D614A461800F50A67B0DD9818,
+	StyleSelectorPart_ToString_m894031E7CAE358204F8D1C334B76DD44A6775BB8,
+	StyleSheetUtility_GetDimensionUnitExportString_mF9D0C8FF9C6728E99B53C30C9B61AD26D9D1395B,
+	StyleSheetUtility__cctor_mCDCEAD95888293E53FE4AF996DFD4A2F2724EA9F,
+	StyleValueHandle_Equals_mF4A4CA11C8C1206D79535DF63D52827F194C481B,
+	StyleValueHandle_Equals_mE8B0B0BF384A7B2DB344F61CA4523EA9F083CBA2,
+	StyleValueHandle_GetHashCode_mD7775BFFF9CE17E738D6E9485D19829BBA4ABE06,
+	Shaders__cctor_m06282ACC2F5344B37C455BC5718897333DB77E3E,
+	Dimension_op_Equality_m62AA7BA544C469C8F7BA7627FE939449344734BA,
+	Dimension_Equals_m69EF6D0CFFF463E6BE9FA658B90BABFF841FCCD4,
+	Dimension_Equals_m4D328F20818BA59A8984495E22DE4CDEE086CC1D,
+	Dimension_GetHashCode_m665D3E075D966FBBFD741531CD95AE3AFB01BB5D,
+	Dimension_ToString_m8E30603B70E83ECF45534EACD0812DAD3BE1F455,
+};
+extern void PanelInputSettings_get_processWorldSpaceInput_mFF7F8E3CBB777701F57FA4C28D92729E9A224347_AdjustorThunk (void);
+extern void PanelInputSettings_get_interactionLayers_m6A82DF737D92396E81980FA1937505AC6AF0D25E_AdjustorThunk (void);
+extern void PanelInputSettings_get_maxInteractionDistance_m38D4CA84FD4CDB78B6C9E6C289D375D7F96066B3_AdjustorThunk (void);
+extern void PanelInputSettings_get_defaultEventCameraIsMainCamera_mDB95183F2EB6864022D8E23BBF35C6FFB4FCFB1D_AdjustorThunk (void);
+extern void PanelInputSettings_get_eventCameras_m11C55A86720D76A53F2A130092CF6D76EFC0C472_AdjustorThunk (void);
+extern void PanelInputSettings_get_autoCreatePanelComponents_m72D7325B9E57366B28617F3FC42151959EFD2EE1_AdjustorThunk (void);
+extern void PanelInputSettings_get_shouldRedirectInput_m0B63F6074A80887627F7A439548389711101CD2D_AdjustorThunk (void);
+extern void Specificity_get_idScore_m63F4090A720F27F88514EDAA7957BC97F228FBCE_AdjustorThunk (void);
+extern void Specificity_get_classScore_m8744C401FDF1301B05AECD3ED83CEA8C31DA7186_AdjustorThunk (void);
+extern void Specificity_get_typeScore_m65AD65A6299071BE777CA8DEEA703C8087E2372F_AdjustorThunk (void);
+extern void Specificity_ToString_m6A52CDB541A711557A07006C2CDB69E5F36A363E_AdjustorThunk (void);
+extern void Specificity_Equals_mA1488C5B58042A5AFD8221E0D10EA9CE3DAFB91C_AdjustorThunk (void);
+extern void Specificity_Equals_m355979F573D77BFCDE78E5AF03356F8F4EECCF05_AdjustorThunk (void);
+extern void Specificity_GetHashCode_m53BA93AD2E29658BD3EE752B94CEF3602F9A4031_AdjustorThunk (void);
+extern void Specificity_CompareTo_m7211CB0298A36CC05C4BB543B88F668F6030526C_AdjustorThunk (void);
+extern void StyleSelectorPart_get_value_mDE127D4691DDFF4F0F468DC08C0EB5248E0EE4D8_AdjustorThunk (void);
+extern void StyleSelectorPart_get_type_m6543B5C01CBAC70D614A461800F50A67B0DD9818_AdjustorThunk (void);
+extern void StyleSelectorPart_ToString_m894031E7CAE358204F8D1C334B76DD44A6775BB8_AdjustorThunk (void);
+extern void StyleValueHandle_Equals_mF4A4CA11C8C1206D79535DF63D52827F194C481B_AdjustorThunk (void);
+extern void StyleValueHandle_Equals_mE8B0B0BF384A7B2DB344F61CA4523EA9F083CBA2_AdjustorThunk (void);
+extern void StyleValueHandle_GetHashCode_mD7775BFFF9CE17E738D6E9485D19829BBA4ABE06_AdjustorThunk (void);
+extern void Dimension_Equals_m69EF6D0CFFF463E6BE9FA658B90BABFF841FCCD4_AdjustorThunk (void);
+extern void Dimension_Equals_m4D328F20818BA59A8984495E22DE4CDEE086CC1D_AdjustorThunk (void);
+extern void Dimension_GetHashCode_m665D3E075D966FBBFD741531CD95AE3AFB01BB5D_AdjustorThunk (void);
+extern void Dimension_ToString_m8E30603B70E83ECF45534EACD0812DAD3BE1F455_AdjustorThunk (void);
+static Il2CppTokenAdjustorThunkPair s_adjustorThunks[25] = 
+{
+	{ 0x06000009, PanelInputSettings_get_processWorldSpaceInput_mFF7F8E3CBB777701F57FA4C28D92729E9A224347_AdjustorThunk },
+	{ 0x0600000A, PanelInputSettings_get_interactionLayers_m6A82DF737D92396E81980FA1937505AC6AF0D25E_AdjustorThunk },
+	{ 0x0600000B, PanelInputSettings_get_maxInteractionDistance_m38D4CA84FD4CDB78B6C9E6C289D375D7F96066B3_AdjustorThunk },
+	{ 0x0600000C, PanelInputSettings_get_defaultEventCameraIsMainCamera_mDB95183F2EB6864022D8E23BBF35C6FFB4FCFB1D_AdjustorThunk },
+	{ 0x0600000D, PanelInputSettings_get_eventCameras_m11C55A86720D76A53F2A130092CF6D76EFC0C472_AdjustorThunk },
+	{ 0x0600000E, PanelInputSettings_get_autoCreatePanelComponents_m72D7325B9E57366B28617F3FC42151959EFD2EE1_AdjustorThunk },
+	{ 0x0600000F, PanelInputSettings_get_shouldRedirectInput_m0B63F6074A80887627F7A439548389711101CD2D_AdjustorThunk },
+	{ 0x06000045, Specificity_get_idScore_m63F4090A720F27F88514EDAA7957BC97F228FBCE_AdjustorThunk },
+	{ 0x06000046, Specificity_get_classScore_m8744C401FDF1301B05AECD3ED83CEA8C31DA7186_AdjustorThunk },
+	{ 0x06000047, Specificity_get_typeScore_m65AD65A6299071BE777CA8DEEA703C8087E2372F_AdjustorThunk },
+	{ 0x06000049, Specificity_ToString_m6A52CDB541A711557A07006C2CDB69E5F36A363E_AdjustorThunk },
+	{ 0x0600004A, Specificity_Equals_mA1488C5B58042A5AFD8221E0D10EA9CE3DAFB91C_AdjustorThunk },
+	{ 0x0600004B, Specificity_Equals_m355979F573D77BFCDE78E5AF03356F8F4EECCF05_AdjustorThunk },
+	{ 0x0600004C, Specificity_GetHashCode_m53BA93AD2E29658BD3EE752B94CEF3602F9A4031_AdjustorThunk },
+	{ 0x0600004D, Specificity_CompareTo_m7211CB0298A36CC05C4BB543B88F668F6030526C_AdjustorThunk },
+	{ 0x0600005B, StyleSelectorPart_get_value_mDE127D4691DDFF4F0F468DC08C0EB5248E0EE4D8_AdjustorThunk },
+	{ 0x0600005C, StyleSelectorPart_get_type_m6543B5C01CBAC70D614A461800F50A67B0DD9818_AdjustorThunk },
+	{ 0x0600005D, StyleSelectorPart_ToString_m894031E7CAE358204F8D1C334B76DD44A6775BB8_AdjustorThunk },
+	{ 0x06000060, StyleValueHandle_Equals_mF4A4CA11C8C1206D79535DF63D52827F194C481B_AdjustorThunk },
+	{ 0x06000061, StyleValueHandle_Equals_mE8B0B0BF384A7B2DB344F61CA4523EA9F083CBA2_AdjustorThunk },
+	{ 0x06000062, StyleValueHandle_GetHashCode_mD7775BFFF9CE17E738D6E9485D19829BBA4ABE06_AdjustorThunk },
+	{ 0x06000065, Dimension_Equals_m69EF6D0CFFF463E6BE9FA658B90BABFF841FCCD4_AdjustorThunk },
+	{ 0x06000066, Dimension_Equals_m4D328F20818BA59A8984495E22DE4CDEE086CC1D_AdjustorThunk },
+	{ 0x06000067, Dimension_GetHashCode_m665D3E075D966FBBFD741531CD95AE3AFB01BB5D_AdjustorThunk },
+	{ 0x06000068, Dimension_ToString_m8E30603B70E83ECF45534EACD0812DAD3BE1F455_AdjustorThunk },
+};
+static const int32_t s_InvokerIndices[104] = 
+{
+	2557,
+	2242,
+	4723,
+	5368,
+	5368,
+	-1,
+	5278,
+	5317,
+	2423,
+	2474,
+	2527,
+	2423,
+	2419,
+	2423,
+	2423,
+	5368,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	5278,
+	5278,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	-1,
+	5185,
+	5368,
+	2423,
+	2423,
+	2423,
+	4152,
+	2419,
+	1895,
+	1756,
+	2467,
+	2032,
+	2557,
+	2419,
+	5368,
+	5368,
+	2557,
+	1691,
+	2557,
+	2419,
+	2419,
+	2557,
+	5368,
+	2557,
+	1719,
+	2419,
+	2467,
+	2419,
+	4681,
+	5368,
+	1899,
+	1756,
+	2467,
+	5368,
+	4131,
+	1795,
+	1756,
+	2467,
+	2419,
+};
+IL2CPP_EXTERN_C const Il2CppCodeGenModule g_UnityEngine_UIElementsModule_CodeGenModule;
+const Il2CppCodeGenModule g_UnityEngine_UIElementsModule_CodeGenModule = 
+{
+	"UnityEngine.UIElementsModule.dll",
+	104,
+	s_methodPointers,
+	25,
+	s_adjustorThunks,
+	s_InvokerIndices,
+	0,
+	NULL,
+	0,
+	NULL,
+	0,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+};
