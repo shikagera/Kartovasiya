@@ -1,4 +1,5 @@
 #include "combat/Combat.h"
+#include "core/Merge.h"
 #include "audio/ProcAudio.h"
 #include <algorithm>
 #include <cmath>
@@ -56,6 +57,7 @@ void Combat::begin(Deck* deck, Player* player, Enemy enemy, int depth, Rng* rng)
     mark_ = ElementId::None;
     markTurns_ = 0;
     ampBonus_ = 0.0f;
+    ultimaUsed_ = false;
     shake_ = 0.0f;
     reactionFlash_ = 0.0f;
     lastReaction_ = LS("", "");
@@ -258,7 +260,68 @@ void Combat::applyReaction(const ReactionDef& rc, const Card& card) {
 }
 
 // ── Card resolution / Разрешение карт ─────────────────────────────────────
+// Составная карта не вешает метку — она разряжается вся сразу.
+void Combat::resolveCompound(const Card& c) {
+    float amp = 1.0f + ampBonus_; ampBonus_ = 0.0f;
+    const int rank = tierRank(c.tier);
+    const float mult = tierMult(c.tier);
+    int dmg = int(c.power * mult * amp);
+
+    lastReaction_ = c.name;
+    reactionFlash_ = 1.0f;
+    shake_ = std::max(shake_, 0.6f + rank * 0.12f);
+    audio::play(audio::Sfx::Reaction, 1.0f, clampf(1.25f - rank * 0.14f, 0.55f, 1.25f));
+    if (!c.chain.empty()) audio::playElement(c.chain.front(), 0.75f);
+
+    Color tint = c.chain.size() >= 2
+        ? lerpC(elem(c.chain[0]).primary, elem(c.chain[1]).primary, 0.5f)
+        : c.tint();
+
+    pushLog(LS(std::string("[") + tierLabel(c.tier) + "] " + c.name.ru + " — урон x"
+                   + num(int(mult)) + (mult - int(mult) > 0.01f ? ".5" : ""),
+               std::string("[") + tierLabel(c.tier) + "] " + c.name.en + " — x"
+                   + num(int(mult)) + (mult - int(mult) > 0.01f ? ".5" : "") + " damage"),
+            tint);
+
+    if (c.tier == MergeTier::Ultima) {
+        ultimaUsed_ = true;
+        enemy_.guard = 0;                                  // игнорирует щит
+        dmg += int(enemy_.hp * 0.20f);                     // и откусывает долю HP
+        enemy_.addStatus(StatusId::Stun, 1, 1);
+        pushLog(LS("Ultima разряжается. Такое бывает раз за бой.",
+                   "The Ultima discharges. Once per combat."), hex(0xFF4D73));
+    } else if (c.tier == MergeTier::T3plus) {
+        enemy_.addStatus(StatusId::Stun, 1, 1);
+    } else if (c.tier == MergeTier::T2plus) {
+        enemy_.guard = 0;                                  // пробивает щит
+    }
+
+    // С третьего уровня удар накрывает и корпус, и все уязвимые точки разом.
+    int saved = target_;
+    if (rank >= 3) {
+        target_ = -1;
+        dealDamageToEnemy(dmg, true, tint);
+        for (int i = 0; i < int(enemy_.spots.size()) && enemy_.alive(); ++i) {
+            if (enemy_.spots[size_t(i)].destroyed) continue;
+            target_ = i;
+            dealDamageToEnemy(dmg / 2, true, tint);
+        }
+    } else {
+        dealDamageToEnemy(dmg, has(c.flags, CardFlags::Precise), tint);
+    }
+    target_ = saved;
+
+    // Статусы всей цепочки — то самое накопление из таблицы уровней.
+    int stacks = 1 + rank;
+    int turns = 2 + rank;
+    for (ElementId e : c.chain) enemy_.addStatus(elem(e).mark, stacks, turns);
+
+    mark_ = ElementId::None;
+    markTurns_ = 0;
+}
+
 void Combat::resolveElement(const Card& c) {
+    if (c.tier != MergeTier::Base) { resolveCompound(c); return; }
     ElementId e = c.element;
     // Дикая карта подстраивается: берёт противоположность текущей метки,
     // гарантируя реакцию.
@@ -396,7 +459,9 @@ void Combat::resolveEffect(const Card& c) {
 bool Combat::canPlay(int handIndex) const {
     if (state_ != CombatState::PlayerTurn) return false;
     if (handIndex < 0 || handIndex >= int(hand_.size())) return false;
-    return hand_[size_t(handIndex)].cost <= cardsLeft_;
+    const Card& c = hand_[size_t(handIndex)];
+    if (c.tier == MergeTier::Ultima && ultimaUsed_) return false;   // раз за бой
+    return c.cost <= cardsLeft_;
 }
 
 void Combat::playCard(int handIndex) {
@@ -431,6 +496,29 @@ void Combat::playCard(int handIndex) {
         // лимит исчерпан — ход автоматически завершается
         endTurn();
     }
+}
+
+bool Combat::mergeInHand(int from, int onto) {
+    int n = int(hand_.size());
+    if (from < 0 || from >= n || onto < 0 || onto >= n || from == onto) return false;
+
+    MergeInfo mi = evaluateMerge(hand_[size_t(onto)], hand_[size_t(from)]);
+    if (!mi.ok) return false;
+
+    Card merged = applyMerge(hand_[size_t(onto)], hand_[size_t(from)], mi);
+    hand_[size_t(onto)] = merged;
+    hand_.erase(hand_.begin() + from);
+
+    // Слияние — событие: слышно и видно.
+    audio::play(audio::Sfx::Reaction, 0.55f,
+                clampf(1.35f - tierRank(mi.tier) * 0.12f, 0.7f, 1.4f));
+    if (!merged.chain.empty()) audio::playElement(merged.chain.back(), 0.6f);
+    if (mi.tier == MergeTier::Ultima) audio::play(audio::Sfx::CraftPerfect, 1.0f);
+
+    pushLog(LS(std::string("Слияние [") + tierLabel(mi.tier) + "]: " + merged.name.ru,
+               std::string("Merge [") + tierLabel(mi.tier) + "]: " + merged.name.en),
+            mi.tier == MergeTier::Ultima ? hex(0xFF4D73) : hex(0xF0DC8C));
+    return true;
 }
 
 void Combat::moveCardInHand(int from, int to) {

@@ -47,8 +47,11 @@ public:
     // ── ввод игрока ───────────────────────────────────────────────────────
     bool canPlay(int handIndex) const;
     void playCard(int handIndex);
-    // Перестановка карт в руке (перетаскивание карты на карту).
+    // Перестановка карт в руке (перетаскивание карты в промежуток).
     void moveCardInHand(int from, int to);
+    // Слияние: карту `from` бросили на карту `onto`. true — слились.
+    bool mergeInHand(int from, int onto);
+    bool ultimaUsed() const { return ultimaUsed_; }
     void endTurn();
     void flee();
     void cycleTarget(int dir);
@@ -87,6 +90,7 @@ private:
     void damagePlayer(int dmg, const LS& src);
     void applyReaction(const ReactionDef& rc, const Card& card);
     void resolveElement(const Card& c);
+    void resolveCompound(const Card& c);
     void resolveSpell(const Card& c);
     void resolveEffect(const Card& c);
     void onVictory();
@@ -110,6 +114,7 @@ private:
     int   target_ = -1;          // -1 = корпус (авто-наведение)
     ElementId mark_ = ElementId::None;
     int   markTurns_ = 0;
+    bool  ultimaUsed_ = false;   // Ultima — один раз за бой
     float ampBonus_ = 0.0f;      // от карт Amplify
     float timer_ = 0.0f;
     float shake_ = 0.0f;

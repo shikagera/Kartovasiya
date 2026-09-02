@@ -1,7 +1,7 @@
 // Procedural art / Процедурная графика — ни одного внешнего ассета.
 // Всё рисуется примитивами raylib: рамки Таро, сигилы, персонаж, враги, фон.
 #pragma once
-#include "core/Cards.h"
+#include "core/Merge.h"
 
 namespace shichoy {
 namespace art {

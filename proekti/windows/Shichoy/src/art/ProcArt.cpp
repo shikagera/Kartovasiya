@@ -30,7 +30,7 @@ static std::vector<int> buildCodepoints() {
     for (int c = 32; c <= 126; ++c) cp.push_back(c);        // ASCII
     for (int c = 0x0400; c <= 0x045F; ++c) cp.push_back(c); // Кириллица
     cp.push_back(0x0490); cp.push_back(0x0491);             // Ґ ґ
-    const int extra[] = { 0x00AB, 0x00BB, 0x2014, 0x2013, 0x2026, 0x2018, 0x2019,
+    const int extra[] = { 0x00AB, 0x00BB, 0x00B7, 0x2022, 0x2014, 0x2013, 0x2026, 0x2018, 0x2019,
                           0x201C, 0x201D, 0x2192, 0x2190, 0x00B0, 0x00D7, 0x2020,
                           0x25C6, 0x2605, 0x2660, 0x2663, 0x2665, 0x2666 };
     for (int c : extra) cp.push_back(c);
@@ -328,6 +328,31 @@ void drawCard(const Card& card, Rectangle r, float hover, bool selected, float t
         text(lv.c_str(), r.x + r.width - 22.0f, r.y + r.height - 17.0f, 11.0f, pal::GoldLit);
     }
     drawRarityGems(r, card.rarity, rare);
+
+    // Уровень слияния и цепочка стихий, из которых карта собрана.
+    if (card.tier != MergeTier::Base) {
+        const char* lab = tierLabel(card.tier);
+        bool ult = (card.tier == MergeTier::Ultima);
+        Color tc = ult ? hex(0xFF4D73) : pal::GoldLit;
+        float lw = textWidth(lab, 11.0f) + 10.0f;
+        Rectangle badge{ r.x + 5, r.y + r.height * 0.60f - 2.0f, lw, 15.0f };
+        DrawRectangleRounded(badge, 0.45f, 5, withA(scaleC(tc, 0.35f), 220));
+        DrawRectangleRoundedLinesEx(badge, 0.45f, 5, 1.0f, tc);
+        textC(lab, badge.x + badge.width * 0.5f, badge.y + 2.0f, 11.0f, tc);
+
+        float dx = r.x + 6.0f;
+        for (size_t i = 0; i < card.chain.size() && dx < r.x + r.width - 8.0f; ++i) {
+            DrawCircleV(Vector2{ dx + 3.0f, r.y + r.height * 0.60f + 22.0f }, 3.0f,
+                        elem(card.chain[i]).primary);
+            dx += 8.0f;
+        }
+        if (ult) {
+            float pulse = 0.5f + 0.5f * std::sin(t * 3.5f);
+            DrawRectangleRoundedLinesEx(r, 0.10f, 8, 2.2f,
+                                        withA(tc, (unsigned char)(140 + 110 * pulse)));
+            drawRuneRing(art, ar * 1.5f, 10, withA(tc, 120), t * 1.5f);
+        }
+    }
 
     if (has(card.flags, CardFlags::Corrupted))
         DrawRectangleRoundedLinesEx(r, 0.10f, 8, 1.0f, withA(pal::Risk, (unsigned char)(120 + 80 * std::sin(t * 4))));

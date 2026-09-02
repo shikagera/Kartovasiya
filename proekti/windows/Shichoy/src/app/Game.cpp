@@ -766,19 +766,20 @@ void Game::drawRunEnd() {
 // ── Codex ─────────────────────────────────────────────────────────────────
 void Game::updateCodex(float) {
     if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_K)) scene_ = codexReturn_;
-    if (IsKeyPressed(KEY_RIGHT)) codexPage_ = (codexPage_ + 1) % 2;
-    if (IsKeyPressed(KEY_LEFT))  codexPage_ = (codexPage_ + 1) % 2;
+    if (IsKeyPressed(KEY_RIGHT)) codexPage_ = (codexPage_ + 1) % 3;
+    if (IsKeyPressed(KEY_LEFT))  codexPage_ = (codexPage_ + 2) % 3;
 }
 
 void Game::drawCodex() {
     ClearBackground(art::pal::Night);
     art::drawStarfield(sw_, sh_, time_, 11u);
     art::textC(g_lang == Lang::Ru ? "КОДЕКС" : "CODEX", sw_ * 0.5f, 20.0f, 28.0f, art::pal::GoldLit);
-    art::textC(codexPage_ == 0
-        ? (g_lang == Lang::Ru ? "16 стихий — метка от первой карты, реакция от второй"
-                              : "16 elements — the first card marks, the second reacts")
-        : (g_lang == Lang::Ru ? "Реакции: пары стихий" : "Reactions: element pairs"),
-        sw_ * 0.5f, 56.0f, 14.0f, withA(art::pal::Vellum, 200));
+    const char* sub =
+        codexPage_ == 0 ? (g_lang == Lang::Ru ? "16 стихий — метка от первой карты, реакция от второй"
+                                              : "16 elements — the first card marks, the second reacts")
+      : codexPage_ == 1 ? (g_lang == Lang::Ru ? "Реакции: пары стихий" : "Reactions: element pairs")
+                        : (g_lang == Lang::Ru ? "Лестница слияния карт" : "The card merge ladder");
+    art::textC(sub, sw_ * 0.5f, 56.0f, 14.0f, withA(art::pal::Vellum, 200));
 
     if (codexPage_ == 0) {
         const auto& els = allElements();
@@ -797,6 +798,56 @@ void Game::drawCodex() {
             snprintf(b, sizeof b, g_lang == Lang::Ru ? "метка: %s" : "mark: %s",
                      statusDef(e.mark).name.c_str());
             art::text(b, r.x + 76, r.y + r.height - 24, 12.0f, withA(art::pal::Gold, 210));
+        }
+    } else if (codexPage_ == 2) {
+        // Лестница слияния карт прямо в руке
+        struct Row { MergeTier tier; LS what; LS effect; };
+        static const Row rows[] = {
+            { MergeTier::Base,   LS("одна стихия", "a single element"),
+                                 LS("Вешает метку. Вторая стихия на враге даст реакцию.",
+                                    "Applies a mark. A second element on the enemy reacts.") },
+            { MergeTier::T1,     LS("стихия + стихия", "element + element"),
+                                 LS("Каноничная реакция из таблицы пар. Урон x2.",
+                                    "The canonical pair reaction. x2 damage.") },
+            { MergeTier::T2,     LS("ур. I + новая стихия", "tier I + a new element"),
+                                 LS("Урон x3, копятся статусы всей цепи.",
+                                    "x3 damage, statuses of the whole chain stack.") },
+            { MergeTier::T2plus, LS("ур. I + ур. I", "tier I + tier I"),
+                                 LS("Урон x3.75, пробивает щит врага.",
+                                    "x3.75 damage, shreds the enemy guard.") },
+            { MergeTier::T3,     LS("ур. II + стихия или ур. I", "tier II + element or tier I"),
+                                 LS("Урон x5 по корпусу и по каждой точке разом.",
+                                    "x5 to the body and every weak spot at once.") },
+            { MergeTier::T3plus, LS("ур. II + ур. II", "tier II + tier II"),
+                                 LS("Урон x6.5 по всему, все статусы, оглушение.",
+                                    "x6.5 to everything, all statuses, a stun.") },
+            { MergeTier::Ultima, LS("ур. III + ур. III, 5+ стихий", "tier III + III, 5+ elements"),
+                                 LS("Урон x10 и 20% текущего HP. Игнорирует щит. Раз за бой.",
+                                    "x10 plus 20% of current HP. Ignores guard. Once per combat.") },
+        };
+        art::textC(g_lang == Lang::Ru
+                       ? "Карты смешиваются прямо в руке: тащи карту на карту"
+                       : "Cards merge right in your hand: drag a card onto a card",
+                   sw_ * 0.5f, 76.0f, 15.0f, withA(art::pal::GoldLit, 230));
+        for (int i = 0; i < 7; ++i) {
+            Rectangle r{ 60.0f, 104.0f + i * 76.0f, sw_ - 120.0f, 68.0f };
+            panel(r, 0.9f);
+            const Row& row = rows[i];
+            bool ult = row.tier == MergeTier::Ultima;
+            Color c = ult ? hex(0xFF4D73) : art::pal::GoldLit;
+
+            const char* lab = tierLabel(row.tier);
+            Rectangle badge{ r.x + 14, r.y + 20, 54, 28 };
+            DrawRectangleRounded(badge, 0.4f, 6, withA(scaleC(c, 0.35f), 220));
+            DrawRectangleRoundedLinesEx(badge, 0.4f, 6, 1.2f, c);
+            art::textC(lab[0] ? lab : "0", badge.x + badge.width * 0.5f, badge.y + 6.0f, 16.0f, c);
+
+            char head[192];
+            snprintf(head, sizeof head, "%s   —   %s   (x%.2g)",
+                     tierName(row.tier).c_str(), row.what.c_str(), double(tierMult(row.tier)));
+            art::text(head, r.x + 82, r.y + 12, 15.0f, c);
+            art::text(row.effect.c_str(), r.x + 82, r.y + 36, 13.0f,
+                      withA(art::pal::Parchment, 225));
         }
     } else {
         // Список известных пар — берём подмножество для читаемости

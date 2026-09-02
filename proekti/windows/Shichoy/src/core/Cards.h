@@ -29,10 +29,29 @@ enum class EffectKind : int {
     COUNT
 };
 
+// Лестница смешивания карт прямо в руке.
+// Base — чистая стихия; дальше карта копит цепочку и множитель, вершина —
+// именная Ultima, разыгрываемая один раз за бой.
+enum class MergeTier : int {
+    Base = 0,   // одна стихия              x1
+    T1,         // база + база              x2   каноничная реакция
+    T2,         // ур.1 + новая стихия      x3
+    T2plus,     // ур.1 + ур.1              x3.75
+    T3,         // ур.2 + стихия/ур.1       x5   бьёт по всем точкам
+    T3plus,     // ур.2 + ур.2              x6.5 + оглушение
+    Ultima      // ур.3 + ур.3, 5+ стихий   x10 + % текущего HP
+};
+int   tierRank(MergeTier t);        // 0..4 — «уровень» из таблицы
+float tierMult(MergeTier t);
+const char* tierLabel(MergeTier t); // I, II, II+, III, III+, ULT
+LS    tierName(MergeTier t);
+
 struct Card {
     uint32_t  uid      = 0;
     CardType  type     = CardType::Element;
     ElementId element  = ElementId::None;
+    MergeTier tier     = MergeTier::Base;
+    std::vector<ElementId> chain;   // стихии в порядке попадания в карту
     LS        name;
     LS        text;
     CardRarity rarity  = CardRarity::Common;

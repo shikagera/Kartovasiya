@@ -47,6 +47,8 @@ static std::string fmt(const char* f, int a) { char b[128]; snprintf(b, sizeof b
 static std::string fmt2(const char* f, int a, int c) { char b[160]; snprintf(b, sizeof b, f, a, c); return b; }
 
 void Card::refreshText() {
+    // У составных карт текст задаётся при слиянии и не пересобирается.
+    if (tier != MergeTier::Base) return;
     switch (type) {
         case CardType::Element: {
             const ElementDef& e = elem(element);
@@ -145,6 +147,7 @@ Card genElementCard(Rng& r, int depth, ElementId forced) {
     c.uid = s_uid++;
     c.type = CardType::Element;
     c.element = (forced != ElementId::None) ? forced : randomElement(r, depth);
+    c.chain = { c.element };
     c.rarity = rollRarity(r, depth);
     const ElementDef& e = elem(c.element);
     c.power = int((5 + depth * 1.6f + r.i(0, 3)) * rarityScale(c.rarity));
@@ -166,6 +169,7 @@ Card genSpellCard(Rng& r, int depth) {
     c.type = CardType::Spell;
     c.rarity = rollRarity(r, depth);
     c.element = r.chance(0.55f) ? randomElement(r, depth) : ElementId::None;
+    if (c.element != ElementId::None) c.chain = { c.element };
 
     static const SpellEffect pool[] = {
         SpellEffect::Damage, SpellEffect::Damage, SpellEffect::Damage,

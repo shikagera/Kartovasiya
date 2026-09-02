@@ -70,6 +70,16 @@ void Game::updateCombat(float dt) {
         if (dragging_) {
             dragLift_ = std::min(1.0f, dragLift_ + dt * 7.0f);
             dropPlay_ = (m.y < tableLineY());
+
+            // Карта прямо под курсором — кандидат на слияние.
+            mergeTarget_ = -1;
+            if (!dropPlay_) {
+                for (int i = n - 1; i >= 0; --i) {
+                    if (i == dragCard_) continue;
+                    if (CheckCollisionPointRec(m, L.rect(i))) { mergeTarget_ = i; break; }
+                }
+            }
+
             int slot = 0;
             for (int p = 0; p < n; ++p)
                 if (m.x > L.rect(p).x + L.cw * 0.5f) slot = p + 1;
@@ -88,17 +98,19 @@ void Game::updateCombat(float dt) {
                     if (hoverSpot_ >= 0) combat_.setTarget(hoverSpot_);
                     if (combat_.canPlay(dragCard_)) combat_.playCard(dragCard_);
                     else audio::play(audio::Sfx::UiBack, 0.6f);
+                } else if (mergeTarget_ >= 0 && combat_.mergeInHand(dragCard_, mergeTarget_)) {
+                    // Карта на карту — слияние по лестнице уровней.
                 } else if (dropSlot_ >= 0) {
                     combat_.moveCardInHand(dragCard_, dropSlot_);
                     audio::play(audio::Sfx::CardDraw, 0.32f, 0.86f);
                 }
             }
             dragging_ = false; dragCard_ = -1; pressCard_ = -1;
-            dropSlot_ = -1; dropPlay_ = false;
+            dropSlot_ = -1; dropPlay_ = false; mergeTarget_ = -1;
         }
     } else {
         dragging_ = false; dragCard_ = -1; pressCard_ = -1;
-        dropSlot_ = -1; dropPlay_ = false;
+        dropSlot_ = -1; dropPlay_ = false; mergeTarget_ = -1;
     }
 
     switch (combat_.state()) {
@@ -204,6 +216,45 @@ void Game::drawHandArea() {
             char k[8]; snprintf(k, sizeof k, "%d", idx + 1);
             art::textC(k, r.x + r.width * 0.5f, r.y - 17.0f, 14.0f,
                        playable ? art::pal::GoldLit : hex(0x5A5A62));
+        }
+    }
+
+    // Подсветка карты, на которую целятся, и предпросмотр слияния.
+    if (dragging_ && dragCard_ >= 0 && dragCard_ < n && mergeTarget_ >= 0 && mergeTarget_ < n) {
+        MergeInfo mi = evaluateMerge(hand[size_t(mergeTarget_)], hand[size_t(dragCard_)]);
+
+        int slot = -1;
+        for (int p = 0; p < int(order.size()); ++p)
+            if (order[size_t(p)] == mergeTarget_) { slot = p; break; }
+
+        float pulse = 0.5f + 0.5f * std::sin(time_ * 6.0f);
+        Color ring = mi.ok ? (mi.tier == MergeTier::Ultima ? hex(0xFF4D73) : hex(0x59C772))
+                           : art::pal::Risk;
+        if (slot >= 0) {
+            Rectangle tr = L.rect(slot);
+            DrawRectangleRoundedLinesEx(Rectangle{ tr.x - 4, tr.y - 4, tr.width + 8, tr.height + 8 },
+                                        0.12f, 8, 2.5f,
+                                        withA(ring, (unsigned char)(150 + 105 * pulse)));
+        }
+
+        // Табличка с исходом: что получится или почему нельзя.
+        Rectangle pv{ clampf(m.x - 170.0f, 8.0f, sw_ - 348.0f), L.y - 96.0f, 340.0f, 84.0f };
+        DrawRectangleRounded(pv, 0.10f, 8, Color{ 10, 8, 14, 235 });
+        DrawRectangleRoundedLinesEx(pv, 0.10f, 8, 1.6f, ring);
+        if (mi.ok) {
+            char head[192];
+            snprintf(head, sizeof head, "[%s] %s   x%.2g",
+                     tierLabel(mi.tier), mi.name.c_str(), double(mi.mult));
+            art::text(head, pv.x + 10, pv.y + 8, 14.0f, ring);
+            art::textWrapped(mi.effect.c_str(),
+                             Rectangle{ pv.x + 10, pv.y + 28, pv.width - 20, 50 }, 11.5f,
+                             withA(art::pal::Parchment, 235), 1.5f);
+        } else {
+            art::text(g_lang == Lang::Ru ? "Не смешивается" : "Will not merge",
+                      pv.x + 10, pv.y + 8, 14.0f, ring);
+            art::textWrapped(mi.reason.c_str(),
+                             Rectangle{ pv.x + 10, pv.y + 28, pv.width - 20, 50 }, 11.5f,
+                             withA(art::pal::Vellum, 220), 1.5f);
         }
     }
 
@@ -517,7 +568,7 @@ void Game::debugForceScene(int which) {
             break;
         }
         case 3: startRun(); openCraft(); break;
-        case 4: codexReturn_ = Scene::Menu; codexPage_ = 0; scene_ = Scene::Codex; break;
+        case 4: codexReturn_ = Scene::Menu; codexPage_ = 2; scene_ = Scene::Codex; break;
         case 5: {
             startRun();
             Enemy e = genEnemy(rng_, 4, true);
@@ -544,6 +595,12 @@ void Game::debugForceScene(int which) {
                 combat_.endTurn();
                 for (int f = 0; f < 60 && combat_.state() != CombatState::PlayerTurn; ++f)
                     combat_.update(0.05f);
+            }
+            // Пара слияний, чтобы в руке были карты с уровнями
+            for (int i = 0, done = 0; i < 200 && done < 5; ++i) {
+                int hn = int(combat_.hand().size());
+                if (hn < 2) break;
+                if (combat_.mergeInHand(rng_.i(0, hn - 1), rng_.i(0, hn - 1))) done++;
             }
             scene_ = Scene::Combat;
             break;

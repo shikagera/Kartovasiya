@@ -3,6 +3,7 @@
 #include "art/ProcArt.h"
 #include "audio/ProcAudio.h"
 #include "craft/Craft.h"
+#include "core/Merge.h"
 #include <cstring>
 #include <cstdio>
 
@@ -66,6 +67,40 @@ static int runSelftest() {
         crafted++;
     }
 
+    // ── Лестница слияния: от чистой стихии до Ultima ──────────────────────
+    std::printf("--- merge ladder ---\n");
+    auto pure = [&](ElementId e) { Card c = genElementCard(rng, 3, e); c.power = 10; return c; };
+    auto step = [&](const Card& a, const Card& b, const char* what) -> Card {
+        MergeInfo mi = evaluateMerge(a, b);
+        std::printf("%-22s -> %-5s x%-5.2f %-34s %s\n", what,
+                    mi.ok ? tierLabel(mi.tier) : "нет", mi.ok ? double(mi.mult) : 0.0,
+                    mi.ok ? mi.name.c_str() : mi.reason.c_str(),
+                    mi.ok ? "" : "  <-- ОТКАЗ");
+        return mi.ok ? applyMerge(a, b, mi) : a;
+    };
+    Card a1 = step(pure(ElementId::Fire), pure(ElementId::Water), "Fire + Water");
+    Card a2 = step(a1, pure(ElementId::Earth), "  I + Earth");
+    Card a3 = step(a2, pure(ElementId::Air), "  II + Air");
+    Card b1 = step(pure(ElementId::Lightning), pure(ElementId::Ice), "Lightning + Ice");
+    Card b2 = step(b1, pure(ElementId::Nature), "  I + Nature");
+    Card b3 = step(b2, pure(ElementId::Shadow), "  II + Shadow");
+    Card ult = step(a3, b3, "  III + III");
+    Card cross = step(a1, b1, "  I + I");
+    Card conv = step(a2, b2, "  II + II");
+
+    bool ladderOk = a1.tier == MergeTier::T1 && a2.tier == MergeTier::T2
+                 && a3.tier == MergeTier::T3 && ult.tier == MergeTier::Ultima
+                 && cross.tier == MergeTier::T2plus && conv.tier == MergeTier::T3plus
+                 && ult.chain.size() >= 5;
+
+    // Запреты: одна и та же стихия, Ultima дальше, не-стихии
+    bool guardsOk = !evaluateMerge(pure(ElementId::Fire), pure(ElementId::Fire)).ok
+                 && !evaluateMerge(ult, pure(ElementId::Metal)).ok
+                 && !evaluateMerge(genSpellCard(rng, 3), pure(ElementId::Fire)).ok
+                 && !evaluateMerge(a3, pure(ElementId::Metal)).ok;   // III + база запрещён
+    std::printf("ladder       : %s, guards %s, ultima chain %d elements\n",
+                ladderOk ? "OK" : "BROKEN", guardsOk ? "OK" : "BROKEN", int(ult.chain.size()));
+
     // Проверка реакций: все 120 пар обязаны что-то возвращать
     int pairs = 0;
     for (int a = 1; a <= ELEMENT_COUNT; ++a)
@@ -81,7 +116,8 @@ static int runSelftest() {
     std::printf("element pairs: %d / 120 resolve\n", pairs);
     std::printf("deck size    : %d cards after crafting\n", int(deck.library().size()));
 
-    bool ok = (stalls == 0) && (pairs == 120) && (maxChance <= 0.7001f) && (wins > 0) && (losses > 0);
+    bool ok = (stalls == 0) && (pairs == 120) && (maxChance <= 0.7001f) && (wins > 0)
+           && (losses > 0) && ladderOk && guardsOk;
     std::printf("result       : %s\n", ok ? "OK" : "FAILED");
     return ok ? 0 : 1;
 }
