@@ -1,0 +1,9 @@
+build/
+out/
+external/raylib/
+*.user
+*.obj
+*.pdb
+*.ilk
+*.exe
+saves/

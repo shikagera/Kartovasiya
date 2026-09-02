@@ -1,0 +1,564 @@
+#include "combat/Combat.h"
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+
+namespace kv {
+
+// ── Player ────────────────────────────────────────────────────────────────
+int Player::statusStacks(StatusId s) const {
+    for (const auto& st : statuses) if (st.id == s) return st.stacks;
+    return 0;
+}
+void Player::addStatus(StatusId s, int stacks, int turns) {
+    if (s == StatusId::None || stacks <= 0) return;
+    for (auto& st : statuses) {
+        if (st.id == s) { st.stacks += stacks; st.turns = std::max(st.turns, turns); return; }
+    }
+    statuses.push_back(StatusInst{ s, stacks, turns });
+}
+void Player::removeNegative() {
+    statuses.erase(std::remove_if(statuses.begin(), statuses.end(), [](const StatusInst& s) {
+        return !statusDef(s.id).onPlayer;
+    }), statuses.end());
+}
+
+Vector2 spotScreenPos(const Enemy& e, int index, Vector2 center, float size) {
+    if (index < 0 || index >= int(e.spots.size())) return center;
+    const WeakSpot& s = e.spots[size_t(index)];
+    return Vector2{ center.x + s.offset.x * size * 1.35f, center.y + s.offset.y * size * 1.70f };
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+static std::string num(int v) { char b[24]; snprintf(b, sizeof b, "%d", v); return b; }
+
+void Combat::pushFloat(const std::string& s, Vector2 p, Color c, float size) {
+    FloatText f;
+    f.s = s; f.pos = p; f.color = c; f.maxLife = 1.1f; f.life = f.maxLife; f.size = size;
+    floats_.push_back(f);
+}
+void Combat::pushLog(const LS& t, Color c) {
+    log_.push_back(LogLine{ t, c, 0.0f });
+    if (log_.size() > 40) log_.erase(log_.begin());
+}
+
+// ── Lifecycle ─────────────────────────────────────────────────────────────
+void Combat::begin(Deck* deck, Player* player, Enemy enemy, int depth, Rng* rng) {
+    deck_ = deck; player_ = player; rng_ = rng;
+    enemy_ = std::move(enemy);
+    depth_ = depth;
+    hand_.clear(); log_.clear(); floats_.clear();
+    rewards_ = CombatRewards{};
+    state_ = CombatState::PlayerTurn;
+    turn_ = 1;
+    target_ = -1;
+    mark_ = ElementId::None;
+    markTurns_ = 0;
+    ampBonus_ = 0.0f;
+    shake_ = 0.0f;
+    reactionFlash_ = 0.0f;
+    lastReaction_ = LS("", "");
+    player_->shield = 0;
+
+    deck_->beginCombat(*rng_);
+    pushLog(LS(std::string("Стол разложен. Против вас — ") + enemy_.name.ru + ".",
+               std::string("The table is set. Facing you: ") + enemy_.name.en + "."), hex(0xE0D4B4));
+    startPlayerTurn();
+}
+
+void Combat::startPlayerTurn() {
+    cardLimit_ = player_->baseCardLimit;
+    cardsLeft_ = cardLimit_;
+    state_ = CombatState::PlayerTurn;
+
+    int want = player_->baseHandSize - int(hand_.size());
+    drawHand(want);
+
+    if (const EnemyMove* m = enemy_.currentMove()) {
+        std::string mult = enemy_.actions > 1 ? ("  x" + num(enemy_.actions)) : std::string();
+        telegraph_ = LS(std::string(enemy_.name.ru) + " " + m->telegraph.ru + " — " + m->name.ru + mult,
+                        std::string(enemy_.name.en) + " " + m->telegraph.en + " — " + m->name.en + mult);
+    }
+}
+
+void Combat::drawHand(int n) {
+    for (int i = 0; i < n; ++i) {
+        Card c;
+        if (!deck_->draw(c, *rng_)) break;
+        hand_.push_back(c);
+    }
+}
+
+void Combat::discardHand() {
+    for (const auto& c : hand_) deck_->discard(c);
+    hand_.clear();
+}
+
+void Combat::cycleTarget(int dir) {
+    int n = int(enemy_.spots.size());
+    if (n == 0) { target_ = -1; return; }
+    for (int k = 0; k < n + 1; ++k) {
+        target_ += dir;
+        if (target_ >= n) target_ = -1;
+        if (target_ < -1) target_ = n - 1;
+        if (target_ == -1) return;
+        if (!enemy_.spots[size_t(target_)].destroyed) return;
+    }
+    target_ = -1;
+}
+
+// ── Damage / Урон ─────────────────────────────────────────────────────────
+int Combat::dealDamageToEnemy(int dmg, bool precise, Color col) {
+    if (dmg <= 0) return 0;
+
+    // Модификаторы: Разряд, Уязвимость, Коррозия, обнажённая цель
+    int shock = enemy_.statusStacks(StatusId::Shock);
+    if (shock > 0) { dmg += shock; enemy_.removeStatus(StatusId::Shock); }
+    if (enemy_.statusStacks(StatusId::Vulnerable) > 0 || enemy_.exposed) dmg = int(dmg * 1.5f);
+    int corr = enemy_.statusStacks(StatusId::Corrode);
+    if (corr > 0) dmg += corr;
+
+    // Щит врага
+    if (enemy_.guard > 0) {
+        int absorbed = std::min(enemy_.guard, dmg);
+        enemy_.guard -= absorbed;
+        dmg -= absorbed;
+        if (absorbed > 0) pushFloat("-" + num(absorbed), Vector2{ 0, -40 }, hex(0x90E0EF), 18.0f);
+    }
+    if (dmg <= 0) return 0;
+
+    // Выбранная точка
+    int spot = target_;
+    if (spot >= 0 && spot < int(enemy_.spots.size()) && !enemy_.spots[size_t(spot)].destroyed) {
+        bool focused = player_->statusStacks(StatusId::Focus) > 0;
+        if (!precise && !focused && rng_->chance(0.22f)) {
+            pushFloat(g_lang == Lang::Ru ? "мимо" : "miss", Vector2{ 0, -20 }, hex(0x8A8A94), 18.0f);
+            pushLog(LS("Удар прошёл мимо точки.", "The strike misses the weak spot."), hex(0x8A8A94));
+            return 0;
+        }
+        float share = precise ? 1.0f : 0.65f;
+        int toSpot = int(dmg * share);
+        int toBody = dmg - toSpot;
+        WeakSpot& ws = enemy_.spots[size_t(spot)];
+        ws.hp -= toSpot;
+        ws.flash = 0.4f;
+        pushFloat("-" + num(toSpot), Vector2{ 0, 0 }, col, 26.0f);
+        enemy_.hp -= toBody;
+        if (ws.hp <= 0) breakSpot(spot);
+    } else {
+        enemy_.hp -= dmg;
+        pushFloat("-" + num(dmg), Vector2{ 0, 0 }, col, 26.0f);
+    }
+
+    enemy_.shake = 0.5f;
+    shake_ = std::max(shake_, 0.25f);
+    if (enemy_.checkPhase()) {
+        const EnemyPhase& ph = enemy_.phases[size_t(enemy_.phase)];
+        pushLog(ph.enterLine.empty() ? LS("Оно меняет облик.", "It changes shape.") : LS(ph.enterLine),
+                hex(0xF2B333));
+        shake_ = 0.9f;
+    }
+    if (enemy_.hp <= 0) onVictory();
+    return dmg;
+}
+
+void Combat::breakSpot(int index) {
+    WeakSpot& ws = enemy_.spots[size_t(index)];
+    ws.destroyed = true;
+    ws.hp = 0;
+    shake_ = 0.8f;
+    pushLog(LS(std::string("Разрушено: ") + ws.name.ru + ".",
+               std::string("Destroyed: ") + ws.name.en + "."), hex(0xF2B333));
+    switch (ws.onBreak) {
+        case SpotBreak::RemoveMove:
+            pushLog(LS("Приём выпал из паттерна.", "A move drops from its pattern."), hex(0x59C772));
+            break;
+        case SpotBreak::Stagger:
+            enemy_.addStatus(StatusId::Stun, 1, 1);
+            pushLog(LS("Оно оглушено.", "It is staggered."), hex(0x59C772));
+            break;
+        case SpotBreak::Expose:
+            enemy_.exposed = true;
+            pushLog(LS("Оно раскрыто: весь урон +50%.", "It is exposed: all damage +50%."), hex(0x59C772));
+            break;
+        case SpotBreak::ForcePhase:
+            enemy_.hp = std::min(enemy_.hp, int(enemy_.maxHp * enemy_.hpFrac() * 0.9f));
+            enemy_.phase = clampi(enemy_.phase + 1, 0, int(enemy_.phases.size()) - 1);
+            enemy_.moveIndex = 0;
+            pushLog(LS("Оно срывается в следующую фазу.", "It lurches into its next phase."), hex(0xF2B333));
+            break;
+    }
+    if (target_ == index) target_ = -1;
+}
+
+void Combat::damagePlayer(int dmg, const LS& src) {
+    if (dmg <= 0) return;
+    int weak = player_->statusStacks(StatusId::Weaken);
+    dmg = std::max(1, dmg - weak);
+    if (player_->shield > 0) {
+        int absorbed = std::min(player_->shield, dmg);
+        player_->shield -= absorbed;
+        dmg -= absorbed;
+        if (absorbed > 0)
+            pushLog(LS("Щит поглотил " + num(absorbed) + ".", "Shield absorbs " + num(absorbed) + "."),
+                    hex(0x90E0EF));
+    }
+    if (dmg <= 0) return;
+    player_->hp -= dmg;
+    shake_ = std::max(shake_, 0.55f);
+    pushLog(LS(std::string(src.ru) + ": -" + num(dmg) + " HP",
+               std::string(src.en) + ": -" + num(dmg) + " HP"), hex(0xFF6B6B));
+    if (player_->hp <= 0) {
+        player_->hp = 0;
+        state_ = CombatState::Lost;
+        pushLog(LS("Свет гаснет. Забег окончен.", "The light goes out. The run ends."), hex(0x8C1A26));
+    }
+}
+
+// ── Reactions ─────────────────────────────────────────────────────────────
+void Combat::applyReaction(const ReactionDef& rc, const Card& card) {
+    float amp = 1.0f + ampBonus_;
+    ampBonus_ = 0.0f;
+
+    int dmg = int((card.power * rc.mult + rc.bonus) * amp);
+    lastReaction_ = rc.name;
+    reactionFlash_ = 1.0f;
+    pushLog(LS(std::string("Реакция: ") + rc.name.ru + " — " + rc.desc.ru,
+               std::string("Reaction: ") + rc.name.en + " — " + rc.desc.en), rc.tint);
+
+    dealDamageToEnemy(dmg, has(card.flags, CardFlags::Precise), rc.tint);
+
+    if (rc.applies != StatusId::None) {
+        if (statusDef(rc.applies).onPlayer) player_->addStatus(rc.applies, rc.statusStacks, rc.statusTurns);
+        else                                enemy_.addStatus(rc.applies, rc.statusStacks, rc.statusTurns);
+    }
+    if (rc.kind == ReactionKind::Drain) {
+        int heal = std::max(1, dmg / 3);
+        player_->hp = std::min(player_->maxHp, player_->hp + heal);
+        pushLog(LS("Вы вытянули " + num(heal) + " HP.", "You drain " + num(heal) + " HP."), hex(0x95D5B2));
+    }
+    if (rc.kind == ReactionKind::Risky && rng_->chance(rc.risk)) {
+        int back = std::max(2, dmg / 4);
+        pushLog(LS("Отдача!", "Backlash!"), hex(0xFF5A40));
+        damagePlayer(back, LS("Отдача", "Backlash"));
+    }
+    mark_ = ElementId::None;
+    markTurns_ = 0;
+    shake_ = std::max(shake_, 0.5f);
+}
+
+// ── Card resolution / Разрешение карт ─────────────────────────────────────
+void Combat::resolveElement(const Card& c) {
+    ElementId e = c.element;
+    // Дикая карта подстраивается: берёт противоположность текущей метки,
+    // гарантируя реакцию.
+    if (has(c.flags, CardFlags::Wild) && mark_ != ElementId::None) {
+        ElementId opp = elem(mark_).opposed;
+        if (opp != ElementId::None && opp != mark_) e = opp;
+    }
+
+    if (mark_ != ElementId::None && mark_ != e) {
+        ReactionDef rc = reactionFor(mark_, e);
+        if (rc.valid) { applyReaction(rc, c); return; }
+    }
+
+    // Ставим метку
+    float amp = 1.0f + ampBonus_; ampBonus_ = 0.0f;
+    mark_ = e;
+    markTurns_ = 3;
+    dealDamageToEnemy(int(c.power * amp), has(c.flags, CardFlags::Precise), elem(e).primary);
+    enemy_.addStatus(elem(e).mark, 1 + depth_ / 4, 2);
+    pushLog(LS(std::string("Метка: ") + elem(e).name.ru, std::string("Mark: ") + elem(e).name.en),
+            elem(e).primary);
+}
+
+void Combat::resolveSpell(const Card& c) {
+    float amp = 1.0f + ampBonus_;
+    bool precise = has(c.flags, CardFlags::Precise);
+    Color col = c.tint();
+
+    switch (c.spell) {
+        case SpellEffect::Damage:
+            ampBonus_ = 0.0f;
+            dealDamageToEnemy(int(c.power * amp), precise, col);
+            break;
+        case SpellEffect::Pierce:
+            ampBonus_ = 0.0f;
+            if (target_ < 0 && !enemy_.spots.empty()) {
+                // авто-наведение на первую целую точку
+                for (int i = 0; i < int(enemy_.spots.size()); ++i)
+                    if (!enemy_.spots[size_t(i)].destroyed) { target_ = i; break; }
+            }
+            dealDamageToEnemy(int(c.power * amp), true, hex(0xF0DC8C));
+            break;
+        case SpellEffect::Volley: {
+            ampBonus_ = 0.0f;
+            for (int i = 0; i < c.amount; ++i)
+                dealDamageToEnemy(int(c.power * amp), precise, col);
+            break;
+        }
+        case SpellEffect::Drain: {
+            ampBonus_ = 0.0f;
+            dealDamageToEnemy(int(c.power * amp), precise, hex(0x9B2226));
+            int heal = c.amount;
+            player_->hp = std::min(player_->maxHp, player_->hp + heal);
+            pushLog(LS("Вытянуто " + num(heal) + " HP.", "Drained " + num(heal) + " HP."), hex(0x95D5B2));
+            break;
+        }
+        case SpellEffect::Heal:
+            player_->hp = std::min(player_->maxHp, player_->hp + c.power);
+            pushLog(LS("Восстановлено " + num(c.power) + " HP.", "Restored " + num(c.power) + " HP."),
+                    hex(0x95D5B2));
+            break;
+        case SpellEffect::Amplify:
+            ampBonus_ += c.amount * 0.1f;
+            pushLog(LS("Следующая реакция усилена.", "Next reaction amplified."), hex(0xF0DC8C));
+            break;
+        case SpellEffect::Detonate: {
+            ampBonus_ = 0.0f;
+            if (mark_ != ElementId::None) {
+                Color mc = elem(mark_).primary;
+                pushLog(LS(std::string("Подрыв метки: ") + elem(mark_).name.ru,
+                           std::string("Mark detonated: ") + elem(mark_).name.en), mc);
+                dealDamageToEnemy(int(c.power * 1.6f * amp), precise, mc);
+                enemy_.addStatus(elem(mark_).mark, 2, 2);
+                mark_ = ElementId::None;
+                markTurns_ = 0;
+            } else {
+                dealDamageToEnemy(int(c.power * amp), precise, col);
+            }
+            break;
+        }
+        default: break;
+    }
+
+    if (has(c.flags, CardFlags::Corrupted) && rng_->chance(0.2f)) {
+        int back = std::max(2, c.power / 5);
+        pushLog(LS("Порча карты отзывается болью.", "The card's corruption bites back."), hex(0xFF5A40));
+        damagePlayer(back, LS("Порча", "Corruption"));
+    }
+}
+
+void Combat::resolveEffect(const Card& c) {
+    switch (c.effect) {
+        case EffectKind::Shield:
+            player_->shield += c.power;
+            pushLog(LS("Щит +" + num(c.power) + ".", "Shield +" + num(c.power) + "."), hex(0x90E0EF));
+            break;
+        case EffectKind::Draw:
+            drawHand(c.amount);
+            pushLog(LS("Взято карт: " + num(c.amount) + ".", "Drew " + num(c.amount) + " card(s)."),
+                    hex(0xE0D4B4));
+            break;
+        case EffectKind::LimitUp:
+            cardLimit_ += c.amount;
+            cardsLeft_ += c.amount;
+            pushLog(LS("Лимит карт +" + num(c.amount) + ".", "Card limit +" + num(c.amount) + "."),
+                    hex(0xF0DC8C));
+            break;
+        case EffectKind::Stun:
+            enemy_.addStatus(StatusId::Stun, 1, c.amount);
+            pushLog(LS("Противник оглушён.", "The enemy is stunned."), hex(0xFFD60A));
+            break;
+        case EffectKind::Focus:
+            player_->addStatus(StatusId::Focus, c.amount, 2);
+            pushLog(LS("Сосредоточение.", "Focused."), hex(0xFFF3B0));
+            break;
+        case EffectKind::Cleanse:
+            player_->removeNegative();
+            pushLog(LS("Негативные статусы сняты.", "Negative statuses cleared."), hex(0x95D5B2));
+            break;
+        case EffectKind::Weaken:
+            enemy_.addStatus(StatusId::Weaken, c.power, c.amount);
+            pushLog(LS("Противник ослаблен.", "The enemy is weakened."), hex(0x6C757D));
+            break;
+        case EffectKind::Regen:
+            player_->addStatus(StatusId::Regen, c.power, c.amount);
+            pushLog(LS("Регенерация.", "Regenerating."), hex(0x95D5B2));
+            break;
+        default: break;
+    }
+}
+
+bool Combat::canPlay(int handIndex) const {
+    if (state_ != CombatState::PlayerTurn) return false;
+    if (handIndex < 0 || handIndex >= int(hand_.size())) return false;
+    return hand_[size_t(handIndex)].cost <= cardsLeft_;
+}
+
+void Combat::playCard(int handIndex) {
+    if (!canPlay(handIndex)) return;
+    Card c = hand_[size_t(handIndex)];
+    hand_.erase(hand_.begin() + handIndex);
+    cardsLeft_ -= c.cost;
+
+    switch (c.type) {
+        case CardType::Element: resolveElement(c); break;
+        case CardType::Spell:   resolveSpell(c);   break;
+        case CardType::Effect:  resolveEffect(c);  break;
+    }
+    deck_->discard(c);
+
+    if (state_ == CombatState::PlayerTurn && cardsLeft_ <= 0) {
+        // лимит исчерпан — ход автоматически завершается
+        endTurn();
+    }
+}
+
+void Combat::endTurn() {
+    if (state_ != CombatState::PlayerTurn) return;
+    state_ = CombatState::Resolving;
+    timer_ = 0.55f;
+}
+
+void Combat::flee() {
+    if (state_ == CombatState::Won || state_ == CombatState::Lost) return;
+    state_ = CombatState::Fled;
+    discardHand();
+    pushLog(LS("Вы складываете стол и уходите.", "You fold the table and walk away."), hex(0xC9B78E));
+}
+
+// ── Enemy turn ────────────────────────────────────────────────────────────
+void Combat::runEnemyTurn() {
+    if (!enemy_.alive()) { onVictory(); return; }
+
+    if (enemy_.statusStacks(StatusId::Freeze) > 0) {
+        pushLog(LS("Оно скованно льдом и пропускает ход.", "It is frozen and loses its turn."),
+                hex(0x48CAE4));
+        enemy_.removeStatus(StatusId::Freeze);
+    } else if (enemy_.statusStacks(StatusId::Stun) > 0) {
+        pushLog(LS("Оно оглушено и пропускает ход.", "It is stunned and loses its turn."), hex(0xFFD60A));
+        enemy_.removeStatus(StatusId::Stun);
+    } else if (enemy_.statusStacks(StatusId::Slow) > 0) {
+        pushLog(LS("Оно замедлено — шаг паттерна пропущен.", "Slowed — a pattern step is skipped."),
+                hex(0x6B705C));
+        enemy_.removeStatus(StatusId::Slow);
+        enemy_.advanceMove();
+    } else for (int act = 0; act < std::max(1, enemy_.actions) && player_->alive() && enemy_.alive(); ++act) {
+        const EnemyMove* m = enemy_.currentMove();
+        if (!m) break;
+        int dmg = m->damage + enemy_.enrage;
+        switch (m->kind) {
+            case MoveKind::Guard:
+                enemy_.guard += 6 + depth_ * 2;
+                pushLog(LS(std::string(m->name.ru) + ": щит.", std::string(m->name.en) + ": guard."),
+                        hex(0x90E0EF));
+                break;
+            case MoveKind::Mend: {
+                int heal = 6 + depth_ * 3;
+                enemy_.hp = std::min(enemy_.maxHp, enemy_.hp + heal);
+                pushLog(LS(std::string(m->name.ru) + ": +" + num(heal) + " HP",
+                           std::string(m->name.en) + ": +" + num(heal) + " HP"), hex(0x95D5B2));
+                break;
+            }
+            case MoveKind::Enrage:
+                enemy_.enrage += 2 + depth_ / 2;
+                pushLog(LS(std::string(m->name.ru) + ": удары усилены.",
+                           std::string(m->name.en) + ": its blows grow."), hex(0xFF5A40));
+                break;
+            case MoveKind::Sunder:
+                if (player_->shield > 0) {
+                    pushLog(LS("Щит расколот.", "Your shield is sundered."), hex(0xFF5A40));
+                    player_->shield = 0;
+                }
+                damagePlayer(dmg, m->name);
+                break;
+            case MoveKind::Multi:
+                for (int i = 0; i < m->hits && player_->alive(); ++i) damagePlayer(dmg, m->name);
+                break;
+            default:
+                damagePlayer(dmg, m->name);
+                break;
+        }
+        if (m->applies != StatusId::None && player_->alive())
+            player_->addStatus(m->applies, m->stacks, m->turns);
+        enemy_.advanceMove();
+    }
+
+    tickStatusesEndOfRound();
+}
+
+void Combat::tickStatusesEndOfRound() {
+    // Враг: DoT
+    int burn = enemy_.statusStacks(StatusId::Burn);
+    int bleed = enemy_.statusStacks(StatusId::Bleed);
+    int pois = enemy_.statusStacks(StatusId::Poisoned);
+    if (burn > 0)  { enemy_.hp -= burn;  pushFloat("-" + num(burn),  Vector2{ 30, -30 }, hex(0xE85D04), 18.0f); }
+    if (bleed > 0) { enemy_.hp -= bleed; pushFloat("-" + num(bleed), Vector2{ -30, -30 }, hex(0x9B2226), 18.0f); }
+    if (pois > 0)  { enemy_.hp -= pois;  pushFloat("-" + num(pois),  Vector2{ 0, -55 }, hex(0x52B788), 18.0f); }
+
+    for (auto& s : enemy_.statuses) if (s.turns > 0) s.turns--;
+    enemy_.statuses.erase(std::remove_if(enemy_.statuses.begin(), enemy_.statuses.end(),
+        [](const StatusInst& s) { return s.turns == 0; }), enemy_.statuses.end());
+
+    // Игрок
+    int pburn = player_->statusStacks(StatusId::Burn);
+    int pbleed = player_->statusStacks(StatusId::Bleed);
+    int ppois = player_->statusStacks(StatusId::Poisoned);
+    if (pburn > 0)  damagePlayer(pburn,  LS("Ожог", "Burn"));
+    if (pbleed > 0) damagePlayer(pbleed, LS("Кровотечение", "Bleed"));
+    if (ppois > 0)  damagePlayer(ppois,  LS("Яд", "Poison"));
+    int regen = player_->statusStacks(StatusId::Regen);
+    if (regen > 0 && player_->alive()) {
+        player_->hp = std::min(player_->maxHp, player_->hp + regen);
+        pushLog(LS("Регенерация: +" + num(regen) + " HP", "Regen: +" + num(regen) + " HP"), hex(0x95D5B2));
+    }
+    for (auto& s : player_->statuses) if (s.turns > 0) s.turns--;
+    player_->statuses.erase(std::remove_if(player_->statuses.begin(), player_->statuses.end(),
+        [](const StatusInst& s) { return s.turns == 0; }), player_->statuses.end());
+
+    if (markTurns_ > 0 && --markTurns_ == 0) mark_ = ElementId::None;
+
+    if (enemy_.hp <= 0) { onVictory(); return; }
+    if (!player_->alive()) { state_ = CombatState::Lost; return; }
+
+    turn_++;
+    startPlayerTurn();
+}
+
+// ── Victory ───────────────────────────────────────────────────────────────
+void Combat::onVictory() {
+    if (state_ == CombatState::Won) return;
+    state_ = CombatState::Won;
+    enemy_.hp = 0;
+    discardHand();
+
+    // Материалы: тема врага + бонус за разрушенные точки и боссов.
+    int rolls = 2 + depth_ / 3 + (enemy_.boss ? 3 : 0);
+    for (const auto& s : enemy_.spots) if (s.destroyed) rolls++;
+    for (int i = 0; i < rolls; ++i) {
+        int m = rng_->i(0, MATERIAL_COUNT - 1);
+        if (rng_->chance(0.45f)) m = eidx(enemy_.flavour) % MATERIAL_COUNT;
+        rewards_.materials[m] += rng_->i(1, 2 + depth_ / 4);
+    }
+    int choices = enemy_.boss ? 3 : 2;
+    for (int i = 0; i < choices; ++i) rewards_.cardChoices.push_back(genCard(*rng_, depth_ + (enemy_.boss ? 2 : 0)));
+
+    pushLog(LS("Противник рассыпается. Забирайте трофеи.",
+               "The enemy comes apart. Take your spoils."), hex(0xF0DC8C));
+}
+
+// ── Update ────────────────────────────────────────────────────────────────
+void Combat::update(float dt) {
+    shake_ = std::max(0.0f, shake_ - dt * 2.4f);
+    reactionFlash_ = std::max(0.0f, reactionFlash_ - dt * 1.6f);
+    enemy_.shake = std::max(0.0f, enemy_.shake - dt * 2.0f);
+    for (auto& s : enemy_.spots) s.flash = std::max(0.0f, s.flash - dt * 2.5f);
+
+    for (auto& f : floats_) { f.life -= dt; f.pos.y -= dt * 34.0f; }
+    floats_.erase(std::remove_if(floats_.begin(), floats_.end(),
+        [](const FloatText& f) { return f.life <= 0.0f; }), floats_.end());
+    for (auto& l : log_) l.age += dt;
+
+    if (state_ == CombatState::Resolving) {
+        timer_ -= dt;
+        if (timer_ <= 0.0f) {
+            state_ = CombatState::EnemyTurn;
+            discardHand();
+            runEnemyTurn();
+            if (state_ == CombatState::EnemyTurn) state_ = CombatState::PlayerTurn;
+        }
+    }
+}
+
+} // namespace kv
