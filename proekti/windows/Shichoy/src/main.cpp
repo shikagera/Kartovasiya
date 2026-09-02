@@ -12,7 +12,7 @@
 static int runSelftest() {
     using namespace shichoy;
     Rng rng(0xBEEF1234);
-    int wins = 0, losses = 0, stalls = 0, reactions = 0, spotsBroken = 0;
+    int wins = 0, losses = 0, stalls = 0, reactions = 0, spotsBroken = 0, maxHand = 0;
 
     for (int depth = 1; depth <= 15; ++depth) {
         for (int trial = 0; trial < 12; ++trial) {
@@ -39,6 +39,7 @@ static int runSelftest() {
                 } else {
                     c.update(0.6f);
                 }
+                maxHand = std::max(maxHand, int(c.hand().size()));
             }
             if (guard >= 4000) { stalls++; continue; }
             if (c.state() == CombatState::Won) wins++; else losses++;
@@ -75,6 +76,7 @@ static int runSelftest() {
     std::printf("combats      : %d wins / %d losses / %d stalls\n", wins, losses, stalls);
     std::printf("reactions    : %d fired\n", reactions);
     std::printf("weak spots   : %d destroyed\n", spotsBroken);
+    std::printf("max hand     : %d cards (no cap)\n", maxHand);
     std::printf("craft ops    : %d, max chance %.0f%% (cap 70%%)\n", crafted, maxChance * 100.0f);
     std::printf("element pairs: %d / 120 resolve\n", pairs);
     std::printf("deck size    : %d cards after crafting\n", int(deck.library().size()));
@@ -107,8 +109,8 @@ int main(int argc, char** argv) {
         // Служебный режим: пройтись по сценам и сохранить кадры.
         const char* names[] = { "shot_menu.png", "shot_overworld.png", "shot_combat.png",
                                 "shot_craft.png", "shot_codex.png", "shot_reward.png",
-                                "shot_tablepull.png" };
-        for (int s = 0; s < 7; ++s) {
+                                "shot_tablepull.png", "shot_bighand.png" };
+        for (int s = 0; s < 8; ++s) {
             game.debugForceScene(s);
             for (int f = 0; f < 25; ++f) game.frame();
             TakeScreenshot(names[s]);

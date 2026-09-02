@@ -39,6 +39,66 @@ void Game::updateCombat(float dt) {
 
         if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) combat_.endTurn();
         if (IsKeyPressed(KEY_F)) combat_.flee();
+
+        // ── Перетаскивание карт ───────────────────────────────────────────
+        int n = int(combat_.hand().size());
+        HandLayout L = handLayout(n);
+
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            for (int i = n - 1; i >= 0; --i) {
+                Rectangle r = handCardRect(L, i, hoverCard_ == i);
+                if (CheckCollisionPointRec(m, r)) {
+                    pressCard_ = i;
+                    pressPos_ = m;
+                    dragGrab_ = Vector2{ m.x - r.x, m.y - r.y };
+                    break;
+                }
+            }
+        }
+
+        // Порог в 6 пикселей отделяет перетаскивание от простого клика.
+        if (pressCard_ >= 0 && IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !dragging_) {
+            float dx = m.x - pressPos_.x, dy = m.y - pressPos_.y;
+            if (dx * dx + dy * dy > 36.0f) {
+                dragging_ = true;
+                dragCard_ = pressCard_;
+                dragLift_ = 0.0f;
+                audio::play(audio::Sfx::CardDraw, 0.40f, 1.18f);
+            }
+        }
+
+        if (dragging_) {
+            dragLift_ = std::min(1.0f, dragLift_ + dt * 7.0f);
+            dropPlay_ = (m.y < tableLineY());
+            int slot = 0;
+            for (int p = 0; p < n; ++p)
+                if (m.x > L.rect(p).x + L.cw * 0.5f) slot = p + 1;
+            dropSlot_ = clampi(slot, 0, std::max(0, n - 1));
+            // Правый клик по ходу перетаскивания — отмена.
+            if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+                dragging_ = false; dragCard_ = -1; pressCard_ = -1; dropSlot_ = -1;
+                audio::play(audio::Sfx::UiBack, 0.5f);
+            }
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (dragging_ && dragCard_ >= 0 && dragCard_ < n) {
+                if (dropPlay_) {
+                    // Бросок над столом — розыгрыш; попали в точку — она и цель.
+                    if (hoverSpot_ >= 0) combat_.setTarget(hoverSpot_);
+                    if (combat_.canPlay(dragCard_)) combat_.playCard(dragCard_);
+                    else audio::play(audio::Sfx::UiBack, 0.6f);
+                } else if (dropSlot_ >= 0) {
+                    combat_.moveCardInHand(dragCard_, dropSlot_);
+                    audio::play(audio::Sfx::CardDraw, 0.32f, 0.86f);
+                }
+            }
+            dragging_ = false; dragCard_ = -1; pressCard_ = -1;
+            dropSlot_ = -1; dropPlay_ = false;
+        }
+    } else {
+        dragging_ = false; dragCard_ = -1; pressCard_ = -1;
+        dropSlot_ = -1; dropPlay_ = false;
     }
 
     switch (combat_.state()) {
@@ -68,47 +128,96 @@ void Game::updateCombat(float dt) {
 }
 
 // ── Hand / Рука ───────────────────────────────────────────────────────────
+// Рука не ограничена по размеру, поэтому карты ужимаются и наезжают друг на
+// друга по мере роста — но не мельче читаемого предела.
+Game::HandLayout Game::handLayout(int count) const {
+    HandLayout L;
+    L.count = count;
+    if (count <= 0) return L;
+
+    const float lane = std::max(300.0f, sw_ - 56.0f);
+    L.cw = 104.0f; L.ch = 146.0f;
+    if (count > 10) {
+        float k = clampf(1.0f - (count - 10) * 0.030f, 0.74f, 1.0f);
+        L.cw *= k; L.ch *= k;
+    }
+    L.step = L.cw + 12.0f;
+    if (count > 1) {
+        float total = (count - 1) * L.step + L.cw;
+        if (total > lane) L.step = (lane - L.cw) / float(count - 1);   // наезд
+    }
+    float total = (count > 1 ? (count - 1) * L.step : 0.0f) + L.cw;
+    L.x0 = (sw_ - total) * 0.5f;
+    L.y = sh_ - L.ch - 14.0f;
+    return L;
+}
+
+Rectangle Game::handCardRect(const HandLayout& L, int slot, bool hovered) const {
+    Rectangle r = L.rect(slot);
+    if (!hovered) return r;
+    const float fw = 104.0f, fh = 146.0f;
+    r = Rectangle{ r.x + (r.width - fw) * 0.5f, L.y + L.ch - fh - 34.0f, fw, fh };
+    r.x = clampf(r.x, 6.0f, sw_ - fw - 6.0f);
+    return r;
+}
+
 void Game::drawHandArea() {
     const auto& hand = combat_.hand();
-    if (hand.empty()) return;
-
-    // Рука живёт в полосе между HUD игрока (слева) и журналом/кнопками (справа).
     int n = int(hand.size());
-    float cw = 104.0f, ch = 146.0f;
-    float lane = std::max(320.0f, sw_ - 700.0f);
-    float gap = (n > 1) ? std::min(12.0f, (lane - n * cw) / float(n - 1)) : 0.0f;
-    if (gap < -44.0f) gap = -44.0f;
-    float total = n * cw + (n - 1) * gap;
-    float x0 = sw_ * 0.5f - total * 0.5f;
-    float baseY = sh_ - ch - 12.0f;
-
+    if (n == 0) return;
+    HandLayout L = handLayout(n);
     Vector2 m = GetMousePosition();
+
+    // Пока карту тащат, она вынута из ряда, а на месте будущей вставки — щель.
+    std::vector<int> order;
+    order.reserve(size_t(n));
+    for (int i = 0; i < n; ++i)
+        if (!(dragging_ && i == dragCard_)) order.push_back(i);
+    if (dragging_)
+        order.insert(order.begin() + clampi(dropSlot_, 0, int(order.size())), -1);
+
     hoverCard_ = -1;
-    for (int i = int(hand.size()) - 1; i >= 0; --i) {
-        Rectangle r{ x0 + i * (cw + gap), baseY, cw, ch };
-        if (hoverCard_ < 0 && CheckCollisionPointRec(m, r)) hoverCard_ = i;
+    if (!dragging_) {
+        for (int p = n - 1; p >= 0; --p)
+            if (CheckCollisionPointRec(m, handCardRect(L, p, false))) { hoverCard_ = order[size_t(p)]; break; }
     }
 
-    for (int i = 0; i < int(hand.size()); ++i) {
-        bool hov = (hoverCard_ == i);
-        bool playable = combat_.canPlay(i);
-        float lift = hov ? 34.0f : 0.0f;
-        Rectangle r{ x0 + i * (cw + gap), baseY - lift, cw, ch };
-        if (!playable) {
-            BeginBlendMode(BLEND_ALPHA);
-            art::drawCard(hand[size_t(i)], r, 0.0f, false, time_);
-            DrawRectangleRounded(r, 0.10f, 8, Color{ 5, 4, 8, 150 });
-            EndBlendMode();
-        } else {
-            art::drawCard(hand[size_t(i)], r, hov ? 1.0f : 0.0f, false, time_);
+    for (int p = 0; p < int(order.size()); ++p) {
+        int idx = order[size_t(p)];
+        Rectangle r = L.rect(p);
+        if (idx < 0) {
+            DrawRectangleRounded(r, 0.10f, 8, Color{ 8, 6, 12, 130 });
+            DrawRectangleRoundedLinesEx(r, 0.10f, 8, 2.0f, withA(art::pal::GoldLit, 160));
+            art::textC(g_lang == Lang::Ru ? "сюда" : "here",
+                       r.x + r.width * 0.5f, r.y + r.height * 0.5f - 7.0f, 12.0f,
+                       withA(art::pal::GoldLit, 190));
+            continue;
         }
-        char idx[8]; snprintf(idx, sizeof idx, "%d", i + 1);
-        art::textC(idx, r.x + r.width * 0.5f, r.y - 18.0f, 15.0f,
-                   playable ? art::pal::GoldLit : hex(0x5A5A62));
+        bool hov = (hoverCard_ == idx);
+        bool playable = combat_.canPlay(idx);
+        // Карта под курсором всплывает в полный размер — иначе в большой руке
+        // текст не прочитать.
+        r = handCardRect(L, p, hov);
+        art::drawCard(hand[size_t(idx)], r, hov ? 1.0f : 0.0f, false, time_);
+        if (!playable) DrawRectangleRounded(r, 0.10f, 8, Color{ 5, 4, 8, 145 });
+        if (idx < 9) {
+            char k[8]; snprintf(k, sizeof k, "%d", idx + 1);
+            art::textC(k, r.x + r.width * 0.5f, r.y - 17.0f, 14.0f,
+                       playable ? art::pal::GoldLit : hex(0x5A5A62));
+        }
+    }
 
-        if (hov && playable && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            combat_.playCard(i);
-            return;
+    // Карта в руке игрока — рисуется последней, поверх всего, у курсора.
+    if (dragging_ && dragCard_ >= 0 && dragCard_ < n) {
+        float lift = 10.0f * dragLift_;
+        Rectangle r{ m.x - dragGrab_.x, m.y - dragGrab_.y - lift, L.cw, L.ch };
+        DrawRectangleRounded(Rectangle{ r.x + 7, r.y + 12, r.width, r.height }, 0.10f, 8,
+                             Color{ 0, 0, 0, 130 });
+        art::drawCard(hand[size_t(dragCard_)], r, 1.0f, true, time_);
+        if (dropPlay_ && !combat_.canPlay(dragCard_)) {
+            DrawRectangleRoundedLinesEx(r, 0.10f, 8, 2.5f, art::pal::Risk);
+            art::textC(g_lang == Lang::Ru ? "нет слотов хода" : "no card slots left",
+                       r.x + r.width * 0.5f, r.y - 20.0f, 13.0f, art::pal::Risk);
         }
     }
 }
@@ -219,13 +328,27 @@ void Game::drawCombat() {
     }
 
     // ── стол на переднем плане ────────────────────────────────────────────
-    float tableY = sh_ - 176.0f;
-    DrawRectangleGradientV(0, int(tableY), sw_, 176, hex(0x162C1E), hex(0x080F0A));
+    float tableY = tableLineY();
+    DrawRectangleGradientV(0, int(tableY), sw_, int(sh_ - tableY), hex(0x162C1E), hex(0x080F0A));
     DrawLineEx(Vector2{ 0, tableY }, Vector2{ float(sw_), tableY }, 3.0f, hex(0x4A3420));
     DrawLineEx(Vector2{ 0, tableY + 6 }, Vector2{ float(sw_), tableY + 6 }, 1.0f, withA(art::pal::Gold, 90));
 
+    // Пока карту тащат — показываем, куда её бросать.
+    if (dragging_) {
+        float pulse = 0.5f + 0.5f * std::sin(time_ * 5.0f);
+        Color zone = dropPlay_ ? art::pal::GoldLit : withA(art::pal::Gold, 110);
+        DrawRectangleLinesEx(Rectangle{ 8, 8, sw_ - 16.0f, tableY - 16.0f },
+                             dropPlay_ ? 3.0f : 1.5f,
+                             withA(zone, (unsigned char)(90 + 110 * pulse)));
+        art::textC(dropPlay_ ? (g_lang == Lang::Ru ? "отпустите — карта сыграет"
+                                                   : "release to play the card")
+                             : (g_lang == Lang::Ru ? "наверх — сыграть, в руку — переставить"
+                                                   : "up to play, into the hand to reorder"),
+                   sw_ * 0.5f, tableY - 28.0f, 15.0f, withA(zone, 230));
+    }
+
     // ── HUD игрока ────────────────────────────────────────────────────────
-    Rectangle php{ 24.0f, sh_ - 170.0f, 290.0f, 22.0f };
+    Rectangle php{ 24.0f, tableY - 116.0f, 290.0f, 22.0f };
     drawBar(php, float(player_.hp) / float(player_.maxHp), hex(0x8C1A26), hex(0x241820),
             TextFormat("HP %d / %d", player_.hp, player_.maxHp));
     if (player_.shield > 0) {
@@ -236,8 +359,9 @@ void Game::drawCombat() {
 
     // Лимит карт
     char cl[96];
-    snprintf(cl, sizeof cl, g_lang == Lang::Ru ? "Карт в ход: %d / %d" : "Cards this turn: %d / %d",
-             combat_.cardsLeft(), combat_.cardLimit());
+    snprintf(cl, sizeof cl, g_lang == Lang::Ru ? "Слотов хода: %d / %d      в руке: %d"
+                                               : "Slots this turn: %d / %d      in hand: %d",
+             combat_.cardsLeft(), combat_.cardLimit(), int(combat_.hand().size()));
     art::text(cl, php.x, php.y + 30.0f, 15.0f, art::pal::Parchment);
     for (int i = 0; i < combat_.cardLimit(); ++i) {
         Vector2 p{ php.x + 8.0f + i * 15.0f, php.y + 56.0f };
@@ -258,7 +382,7 @@ void Game::drawCombat() {
     }
 
     // ── журнал боя ────────────────────────────────────────────────────────
-    Rectangle lg{ sw_ - 336.0f, sh_ * 0.58f, 312.0f, sh_ * 0.42f - 128.0f };
+    Rectangle lg{ sw_ - 336.0f, sh_ * 0.40f, 312.0f, tableY - sh_ * 0.40f - 58.0f };
     DrawRectangleRounded(lg, 0.06f, 6, Color{ 8, 6, 12, 190 });
     DrawRectangleRoundedLinesEx(lg, 0.06f, 6, 1.0f, withA(art::pal::Gold, 110));
     const auto& log = combat_.log();
@@ -274,15 +398,15 @@ void Game::drawCombat() {
 
     // ── кнопки ────────────────────────────────────────────────────────────
     if (combat_.state() == CombatState::PlayerTurn) {
-        Rectangle endB{ sw_ - 330.0f, sh_ - 62.0f, 150.0f, 40.0f };
+        Rectangle endB{ sw_ - 330.0f, tableY - 50.0f, 150.0f, 40.0f };
         if (button(endB, g_lang == Lang::Ru ? "Конец хода [ENTER]" : "End turn [ENTER]", true, 14.0f))
             combat_.endTurn();
-        Rectangle fleeB{ sw_ - 172.0f, sh_ - 62.0f, 150.0f, 40.0f };
+        Rectangle fleeB{ sw_ - 172.0f, tableY - 50.0f, 150.0f, 40.0f };
         if (button(fleeB, g_lang == Lang::Ru ? "Сбежать [F]" : "Flee [F]", true, 14.0f))
             combat_.flee();
     } else {
         art::textC(g_lang == Lang::Ru ? "…ход противника…" : "...enemy's turn...",
-                   sw_ - 176.0f, sh_ - 54.0f, 16.0f, withA(art::pal::Risk, 220));
+                   sw_ - 176.0f, tableY - 42.0f, 16.0f, withA(art::pal::Risk, 220));
     }
 
     // Рука
@@ -409,6 +533,19 @@ void Game::debugForceScene(int which) {
             startRun();
             enterCombat(false, -1);
             pullT_ = 0.9f;
+            break;
+        }
+        case 7: {   // бой с разросшейся рукой — проверка раскладки без потолка
+            startRun();
+            for (int i = 0; i < 24; ++i) deck_.addCard(genCard(rng_, 3));
+            Enemy e = genEnemy(rng_, 4, false);
+            combat_.begin(&deck_, &player_, std::move(e), 4, &rng_);
+            for (int turn = 0; turn < 3; ++turn) {
+                combat_.endTurn();
+                for (int f = 0; f < 60 && combat_.state() != CombatState::PlayerTurn; ++f)
+                    combat_.update(0.05f);
+            }
+            scene_ = Scene::Combat;
             break;
         }
         default: break;

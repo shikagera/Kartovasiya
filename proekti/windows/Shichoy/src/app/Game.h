@@ -69,6 +69,16 @@ private:
     void drawStatusRow(const std::vector<StatusInst>& st, float x, float y, float size);
     void drawBar(Rectangle r, float frac, Color fill, Color back, const char* label);
     void drawHandArea();
+    // Раскладка руки: карты ужимаются и наезжают друг на друга по мере роста.
+    struct HandLayout {
+        float cw = 104, ch = 146, step = 110, x0 = 0, y = 0;
+        int   count = 0;
+        Rectangle rect(int i) const { return Rectangle{ x0 + i * step, y, cw, ch }; }
+    };
+    HandLayout handLayout(int count) const;
+    // Прямоугольник карты в руке; под курсором она всплывает в полный размер.
+    Rectangle handCardRect(const HandLayout& L, int slot, bool hovered) const;
+    float tableLineY() const { return sh_ - 176.0f; }
     void drawCodexEntry(int i, Rectangle r);
     void toast(const LS& t);
 
@@ -99,6 +109,16 @@ private:
     // рука/наведение
     int   hoverCard_ = -1;
     int   hoverSpot_ = -1;
+
+    // перетаскивание карт мышью
+    int     pressCard_ = -1;      // карта под зажатой кнопкой (ещё не тащим)
+    int     dragCard_ = -1;       // карта в руке
+    bool    dragging_ = false;    // курсор ушёл дальше порога — это перетаскивание
+    Vector2 pressPos_{ 0, 0 };    // где нажали
+    Vector2 dragGrab_{ 0, 0 };    // смещение курсора внутри карты
+    int     dropSlot_ = -1;       // куда карта встанет в руке
+    bool    dropPlay_ = false;    // курсор в зоне розыгрыша (над столом)
+    float   dragLift_ = 0.0f;     // анимация подъёма
 
     // награды
     int   rewardHover_ = -1;

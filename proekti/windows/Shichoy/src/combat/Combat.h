@@ -7,8 +7,8 @@ namespace shichoy {
 struct Player {
     int hp = 60, maxHp = 60;
     int shield = 0;
-    int baseCardLimit = 5;
-    int baseHandSize = 6;
+    int baseCardLimit = 5;   // сколько карт можно сыграть за ход
+    int drawPerTurn = 5;     // добор в начале хода; размер руки не ограничен
     std::vector<StatusInst> statuses;
 
     int  statusStacks(StatusId s) const;
@@ -47,6 +47,8 @@ public:
     // ── ввод игрока ───────────────────────────────────────────────────────
     bool canPlay(int handIndex) const;
     void playCard(int handIndex);
+    // Перестановка карт в руке (перетаскивание карты на карту).
+    void moveCardInHand(int from, int to);
     void endTurn();
     void flee();
     void cycleTarget(int dir);

@@ -72,8 +72,9 @@ void Combat::startPlayerTurn() {
     cardsLeft_ = cardLimit_;
     state_ = CombatState::PlayerTurn;
 
-    int want = player_->baseHandSize - int(hand_.size());
-    drawHand(want);
+    // Рука между ходами не сбрасывается: всё несыгранное остаётся лежать,
+    // сверху приходит фиксированный добор. Потолка у руки нет.
+    drawHand(player_->drawPerTurn);
 
     if (const EnemyMove* m = enemy_.currentMove()) {
         std::string mult = enemy_.actions > 1 ? ("  x" + num(enemy_.actions)) : std::string();
@@ -432,6 +433,16 @@ void Combat::playCard(int handIndex) {
     }
 }
 
+void Combat::moveCardInHand(int from, int to) {
+    int n = int(hand_.size());
+    if (from < 0 || from >= n) return;
+    to = clampi(to, 0, n - 1);
+    if (from == to) return;
+    Card c = hand_[size_t(from)];
+    hand_.erase(hand_.begin() + from);
+    hand_.insert(hand_.begin() + to, c);
+}
+
 void Combat::endTurn() {
     if (state_ != CombatState::PlayerTurn) return;
     state_ = CombatState::Resolving;
@@ -582,7 +593,6 @@ void Combat::update(float dt) {
         timer_ -= dt;
         if (timer_ <= 0.0f) {
             state_ = CombatState::EnemyTurn;
-            discardHand();
             runEnemyTurn();
             if (state_ == CombatState::EnemyTurn) state_ = CombatState::PlayerTurn;
         }
