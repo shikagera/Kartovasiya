@@ -1,5 +1,6 @@
 #include "world/Overworld.h"
 #include "art/ProcArt.h"
+#include "audio/ProcAudio.h"
 #include <algorithm>
 #include <cmath>
 
@@ -213,8 +214,14 @@ void Overworld::update(float dt, bool inputEnabled) {
         if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) { dir.x += 1; facing_ = 1; }
     }
     float len = std::sqrt(dir.x * dir.x + dir.y * dir.y);
-    if (len > 0.0001f) { dir.x /= len; dir.y /= len; walkPhase_ += dt * 11.0f; }
-    else walkPhase_ *= 0.85f;
+    if (len > 0.0001f) {
+        dir.x /= len; dir.y /= len;
+        float before = walkPhase_;
+        walkPhase_ += dt * 11.0f;
+        // Шаг звучит на каждом полупериоде походки.
+        if (int(before / PI) != int(walkPhase_ / PI))
+            audio::play(audio::Sfx::Step, 0.22f, 0.85f + 0.3f * art::hash01(int(walkPhase_), 0, 7u));
+    } else walkPhase_ *= 0.85f;
 
     const float speed = 150.0f;
     float nx = player_.x + dir.x * speed * dt;

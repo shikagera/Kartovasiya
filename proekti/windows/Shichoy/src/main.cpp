@@ -1,6 +1,7 @@
 // Shichoy / Шичой — Windows, C++20, raylib. Точка входа.
 #include "app/Game.h"
 #include "art/ProcArt.h"
+#include "audio/ProcAudio.h"
 #include "craft/Craft.h"
 #include <cstring>
 #include <cstdio>
@@ -84,12 +85,14 @@ static int runSelftest() {
 }
 
 int main(int argc, char** argv) {
-    bool shotMode = false, selftest = false;
+    bool shotMode = false, selftest = false, audiodump = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--shot") == 0) shotMode = true;
         if (std::strcmp(argv[i], "--selftest") == 0) selftest = true;
+        if (std::strcmp(argv[i], "--audiodump") == 0) audiodump = true;
     }
     if (selftest) return runSelftest();
+    if (audiodump) { shichoy::audio::debugDump("."); return 0; }
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
     InitWindow(1280, 720, "Shichoy / Шичой");

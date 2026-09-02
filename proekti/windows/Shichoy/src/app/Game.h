@@ -125,6 +125,10 @@ private:
     LS    toast_;
     float toastT_ = 0.0f;
 
+    // звук
+    unsigned hoverKey_ = 0;      // по какой кнопке уже звучало наведение
+    bool  thudPlayed_ = false;   // стол уже стукнул об землю
+
     // меню
     int   menuIndex_ = 0;
 };

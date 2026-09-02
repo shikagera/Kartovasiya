@@ -1,4 +1,5 @@
 #include "combat/Combat.h"
+#include "audio/ProcAudio.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -132,6 +133,7 @@ int Combat::dealDamageToEnemy(int dmg, bool precise, Color col) {
     if (spot >= 0 && spot < int(enemy_.spots.size()) && !enemy_.spots[size_t(spot)].destroyed) {
         bool focused = player_->statusStacks(StatusId::Focus) > 0;
         if (!precise && !focused && rng_->chance(0.22f)) {
+            audio::play(audio::Sfx::Miss, 0.7f);
             pushFloat(g_lang == Lang::Ru ? "мимо" : "miss", Vector2{ 0, -20 }, hex(0x8A8A94), 18.0f);
             pushLog(LS("Удар прошёл мимо точки.", "The strike misses the weak spot."), hex(0x8A8A94));
             return 0;
@@ -150,12 +152,14 @@ int Combat::dealDamageToEnemy(int dmg, bool precise, Color col) {
         pushFloat("-" + num(dmg), Vector2{ 0, 0 }, col, 26.0f);
     }
 
+    audio::play(audio::Sfx::Hit, 0.55f, 0.9f + 0.2f * rng_->f());
     enemy_.shake = 0.5f;
     shake_ = std::max(shake_, 0.25f);
     if (enemy_.checkPhase()) {
         const EnemyPhase& ph = enemy_.phases[size_t(enemy_.phase)];
         pushLog(ph.enterLine.empty() ? LS("Оно меняет облик.", "It changes shape.") : LS(ph.enterLine),
                 hex(0xF2B333));
+        audio::play(audio::Sfx::PhaseShift, 0.9f);
         shake_ = 0.9f;
     }
     if (enemy_.hp <= 0) onVictory();
@@ -167,6 +171,7 @@ void Combat::breakSpot(int index) {
     ws.destroyed = true;
     ws.hp = 0;
     shake_ = 0.8f;
+    audio::play(audio::Sfx::SpotBreak, 0.95f);
     pushLog(LS(std::string("Разрушено: ") + ws.name.ru + ".",
                std::string("Destroyed: ") + ws.name.en + "."), hex(0xF2B333));
     switch (ws.onBreak) {
@@ -204,6 +209,7 @@ void Combat::damagePlayer(int dmg, const LS& src) {
                     hex(0x90E0EF));
     }
     if (dmg <= 0) return;
+    audio::play(audio::Sfx::PlayerHurt, 0.8f);
     player_->hp -= dmg;
     shake_ = std::max(shake_, 0.55f);
     pushLog(LS(std::string(src.ru) + ": -" + num(dmg) + " HP",
@@ -211,6 +217,7 @@ void Combat::damagePlayer(int dmg, const LS& src) {
     if (player_->hp <= 0) {
         player_->hp = 0;
         state_ = CombatState::Lost;
+        audio::play(audio::Sfx::Defeat, 1.0f);
         pushLog(LS("Свет гаснет. Забег окончен.", "The light goes out. The run ends."), hex(0x8C1A26));
     }
 }
@@ -223,6 +230,8 @@ void Combat::applyReaction(const ReactionDef& rc, const Card& card) {
     int dmg = int((card.power * rc.mult + rc.bonus) * amp);
     lastReaction_ = rc.name;
     reactionFlash_ = 1.0f;
+    // Реакция звучит поверх голоса стихии: чем сильнее, тем ниже удар.
+    audio::play(audio::Sfx::Reaction, 1.0f, clampf(1.25f - rc.mult * 0.28f, 0.6f, 1.3f));
     pushLog(LS(std::string("Реакция: ") + rc.name.ru + " — " + rc.desc.ru,
                std::string("Reaction: ") + rc.name.en + " — " + rc.desc.en), rc.tint);
 
@@ -306,6 +315,7 @@ void Combat::resolveSpell(const Card& c) {
             break;
         }
         case SpellEffect::Heal:
+            audio::play(audio::Sfx::Heal, 0.85f);
             player_->hp = std::min(player_->maxHp, player_->hp + c.power);
             pushLog(LS("Восстановлено " + num(c.power) + " HP.", "Restored " + num(c.power) + " HP."),
                     hex(0x95D5B2));
@@ -342,6 +352,7 @@ void Combat::resolveSpell(const Card& c) {
 void Combat::resolveEffect(const Card& c) {
     switch (c.effect) {
         case EffectKind::Shield:
+            audio::play(audio::Sfx::Shield, 0.85f);
             player_->shield += c.power;
             pushLog(LS("Щит +" + num(c.power) + ".", "Shield +" + num(c.power) + "."), hex(0x90E0EF));
             break;
@@ -373,6 +384,7 @@ void Combat::resolveEffect(const Card& c) {
             pushLog(LS("Противник ослаблен.", "The enemy is weakened."), hex(0x6C757D));
             break;
         case EffectKind::Regen:
+            audio::play(audio::Sfx::Heal, 0.7f, 0.85f);
             player_->addStatus(StatusId::Regen, c.power, c.amount);
             pushLog(LS("Регенерация.", "Regenerating."), hex(0x95D5B2));
             break;
@@ -391,6 +403,21 @@ void Combat::playCard(int handIndex) {
     Card c = hand_[size_t(handIndex)];
     hand_.erase(hand_.begin() + handIndex);
     cardsLeft_ -= c.cost;
+
+    // Сначала шорох бумаги — карту вытаскивают из руки, — потом голос карты.
+    audio::play(audio::Sfx::CardDraw, 0.55f, 0.92f + 0.16f * rng_->f());
+    switch (c.type) {
+        case CardType::Element:
+            audio::playElement(c.element, 0.95f);
+            break;
+        case CardType::Spell:
+            audio::play(audio::Sfx::CardSpell, 0.85f);
+            if (c.element != ElementId::None) audio::playElement(c.element, 0.55f);
+            break;
+        case CardType::Effect:
+            audio::play(audio::Sfx::CardEffect, 0.85f);
+            break;
+    }
 
     switch (c.type) {
         case CardType::Element: resolveElement(c); break;
@@ -520,6 +547,7 @@ void Combat::tickStatusesEndOfRound() {
 void Combat::onVictory() {
     if (state_ == CombatState::Won) return;
     state_ = CombatState::Won;
+    audio::play(audio::Sfx::Victory, 0.9f);
     enemy_.hp = 0;
     discardHand();
 

@@ -1,6 +1,7 @@
 // Combat & reward UI / Интерфейс боя и наград — вид от первого лица.
 #include "app/Game.h"
 #include "art/ProcArt.h"
+#include "audio/ProcAudio.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>

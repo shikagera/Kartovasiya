@@ -1,5 +1,6 @@
 #include "app/Game.h"
 #include "art/ProcArt.h"
+#include "audio/ProcAudio.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -33,13 +34,21 @@ void Game::panel(Rectangle r, float alpha) {
 bool Game::button(Rectangle r, const char* label, bool enabled, float fontSize) {
     Vector2 m = GetMousePosition();
     bool over = enabled && CheckCollisionPointRec(m, r);
+
+    // Тихий тик при переходе на новую кнопку — ключ собираем из геометрии.
+    if (over) {
+        unsigned key = unsigned(int(r.x) * 73856093) ^ unsigned(int(r.y) * 19349663);
+        if (key != hoverKey_) { hoverKey_ = key; audio::play(audio::Sfx::UiHover, 0.35f); }
+    }
     Color fill = enabled ? (over ? hex(0x2A2038) : hex(0x191324)) : hex(0x141218);
     Color line = enabled ? (over ? art::pal::GoldLit : art::pal::Gold) : hex(0x3A3A42);
     DrawRectangleRounded(r, 0.25f, 6, fill);
     DrawRectangleRoundedLinesEx(r, 0.25f, 6, over ? 2.0f : 1.2f, line);
     Color tc = enabled ? (over ? art::pal::GoldLit : art::pal::Parchment) : hex(0x5A5A62);
     art::textC(label, r.x + r.width * 0.5f, r.y + (r.height - fontSize) * 0.5f, fontSize, tc);
-    return over && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+    bool clicked = over && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+    if (clicked) audio::play(audio::Sfx::UiClick, 0.7f);
+    return clicked;
 }
 
 void Game::drawBar(Rectangle r, float frac, Color fill, Color back, const char* label) {
@@ -72,6 +81,8 @@ void Game::toast(const LS& t) { toast_ = t; toastT_ = 3.0f; }
 // ── Lifecycle ─────────────────────────────────────────────────────────────
 void Game::init() {
     art::init();
+    audio::init();
+    audio::setTrack(audio::Track::Menu);
     meta_ = loadMeta();
     rng_.reseed(uint64_t(GetTime() * 1000000.0) ^ 0x9E3779B97F4A7C15ull);
     g_rng.reseed(rng_.next());
@@ -80,6 +91,7 @@ void Game::init() {
 
 void Game::shutdown() {
     saveMeta(meta_);
+    audio::shutdown();
     art::shutdown();
 }
 
@@ -127,6 +139,9 @@ void Game::enterCombat(bool boss, int worldEntIndex) {
     pendingBoss_ = boss;
     pendingEnt_ = worldEntIndex;
     pullT_ = 0.0f;
+    thudPlayed_ = false;
+    audio::play(audio::Sfx::Encounter, 0.8f);
+    audio::play(audio::Sfx::TableScrape, 0.9f);
     scene_ = Scene::TablePull;
 }
 
@@ -306,6 +321,7 @@ void Game::interact(int entIndex) {
         case EntKind::Resource: {
             int n = rng_.i(1, 2 + depth_ / 3);
             inv_.add(e.data, n);
+            audio::play(audio::Sfx::Gather, 0.8f, 0.9f + 0.2f * rng_.f());
             char buf[160];
             snprintf(buf, sizeof buf, g_lang == Lang::Ru ? "Собрано: %s x%d" : "Gathered: %s x%d",
                      material(e.data).name.c_str(), n);
@@ -397,6 +413,7 @@ void Game::resolveDialog(int action) {
                 int take = std::min(inv_.mats[i], cost - paid);
                 inv_.mats[i] -= take; paid += take;
             }
+            audio::play(audio::Sfx::Heal, 0.85f);
             int heal = int(player_.maxHp * 0.30f);
             player_.hp = std::min(player_.maxHp, player_.hp + heal);
             toast(LS("Отвар горчит. Раны затягиваются.", "The brew is bitter. Wounds close."));
@@ -504,6 +521,11 @@ void Game::drawDialog() {
 // ── Table pull / «ГГ достаёт стол» ────────────────────────────────────────
 void Game::updateTablePull(float dt) {
     pullT_ += dt;
+    // Стол встаёт на землю в момент, когда рука довела его до места.
+    if (!thudPlayed_ && pullT_ >= 1.20f) {
+        thudPlayed_ = true;
+        audio::play(audio::Sfx::TableThud, 1.0f);
+    }
     if (pullT_ >= 1.55f) {
         Enemy e = genEnemy(rng_, depth_ + (pendingBoss_ ? 2 : 0), pendingBoss_);
         combat_.begin(&deck_, &player_, std::move(e), depth_ + (pendingBoss_ ? 2 : 0), &rng_);
@@ -555,6 +577,8 @@ void Game::updateCraft(float dt) {
     if (mini_.finished() && planActive_) {
         planActive_ = false;
         craftResult_ = applyCraft(plan_, mini_.success(), mini_.perfect(), deck_, inv_, depth_, rng_);
+        audio::play(mini_.perfect() ? audio::Sfx::CraftPerfect
+                                    : (mini_.success() ? audio::Sfx::CraftSuccess : audio::Sfx::CraftFail), 0.9f);
     }
     if (mini_.running() && (IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT)))
         mini_.commit();
@@ -634,6 +658,7 @@ void Game::drawCraft() {
     Rectangle startBtn{ planBox.x + planBox.width - 214.0f, planBox.y + 186.0f, 198.0f, 44.0f };
     if (button(startBtn, g_lang == Lang::Ru ? "Начать работу [SPACE]" : "Begin work [SPACE]", ok, 16.0f)) {
         plan_.targetCard = craftTarget_;
+        audio::play(audio::Sfx::CraftStart, 0.8f);
         mini_.start(plan_.chance, rng_);
         planActive_ = true;
         craftResult_ = LS("", "");
@@ -805,6 +830,20 @@ void Game::frame() {
     sw_ = GetScreenWidth();
     sh_ = GetScreenHeight();
     if (toastT_ > 0.0f) toastT_ -= dt;
+
+    if (IsKeyPressed(KEY_M)) audio::setMuted(!audio::muted());
+
+    // Музыка следует за сценой: меню — полный трек, поле — шёпот,
+    // бой и подготовка к нему — напряжённый пульс.
+    switch (scene_) {
+        case Scene::Menu:
+        case Scene::RunEnd:    audio::setTrack(audio::Track::Menu); break;
+        case Scene::TablePull:
+        case Scene::Combat:
+        case Scene::Reward:    audio::setTrack(audio::Track::Combat); break;
+        default:               audio::setTrack(audio::Track::Overworld); break;
+    }
+    audio::update(dt);
 
     switch (scene_) {
         case Scene::Menu:      updateMenu(dt); break;
