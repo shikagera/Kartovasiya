@@ -3,7 +3,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace kv {
+namespace shichoy {
 
 // ── Player ────────────────────────────────────────────────────────────────
 int Player::statusStacks(StatusId s) const {
@@ -561,4 +561,4 @@ void Combat::update(float dt) {
     }
 }
 
-} // namespace kv
+} // namespace shichoy

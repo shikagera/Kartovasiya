@@ -2,7 +2,7 @@
 #pragma once
 #include "core/Cards.h"
 
-namespace kv {
+namespace shichoy {
 
 struct Inventory {
     int mats[MATERIAL_COUNT] = { 0 };
@@ -64,4 +64,4 @@ private:
 LS applyCraft(const CraftPlan& plan, bool success, bool perfect,
               Deck& deck, Inventory& inv, int depth, Rng& r);
 
-} // namespace kv
+} // namespace shichoy

@@ -2,7 +2,7 @@
 #pragma once
 #include "core/Types.h"
 
-namespace kv {
+namespace shichoy {
 
 // ── Statuses / Статусы ────────────────────────────────────────────────────
 enum class StatusId : int {
@@ -100,4 +100,4 @@ const std::vector<LS>& enemyPrefixes();
 const std::vector<LS>& enemyNouns();
 const std::vector<LS>& affixNames();
 
-} // namespace kv
+} // namespace shichoy

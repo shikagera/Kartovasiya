@@ -2,7 +2,7 @@
 #pragma once
 #include "combat/Enemy.h"
 
-namespace kv {
+namespace shichoy {
 
 struct Player {
     int hp = 60, maxHp = 60;
@@ -118,4 +118,4 @@ private:
 
 Vector2 spotScreenPos(const Enemy& e, int index, Vector2 center, float size);
 
-} // namespace kv
+} // namespace shichoy

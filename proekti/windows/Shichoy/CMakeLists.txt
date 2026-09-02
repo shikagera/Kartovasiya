@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Kartovasiya LANGUAGES CXX)
+project(Shichoy LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,10 +20,10 @@ set(CUSTOMIZE_BUILD ON CACHE BOOL "" FORCE)
 set(SUPPORT_MODULE_RMODELS OFF CACHE BOOL "" FORCE)
 
 if(EXISTS "${RAYLIB_LOCAL}/CMakeLists.txt")
-    message(STATUS "Kartovasiya: using vendored raylib at ${RAYLIB_LOCAL}")
+    message(STATUS "Shichoy: using vendored raylib at ${RAYLIB_LOCAL}")
     add_subdirectory("${RAYLIB_LOCAL}" raylib_build EXCLUDE_FROM_ALL)
 else()
-    message(STATUS "Kartovasiya: fetching raylib 5.5 from GitHub")
+    message(STATUS "Shichoy: fetching raylib 5.5 from GitHub")
     include(FetchContent)
     FetchContent_Declare(raylib
         GIT_REPOSITORY https://github.com/raysan5/raylib.git
@@ -34,17 +34,17 @@ endif()
 
 # ── game ──────────────────────────────────────────────────────────────────
 file(GLOB_RECURSE KV_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
-add_executable(Kartovasiya ${KV_SOURCES})
-target_include_directories(Kartovasiya PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(Kartovasiya PRIVATE raylib)
+add_executable(Shichoy ${KV_SOURCES})
+target_include_directories(Shichoy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(Shichoy PRIVATE raylib)
 
 if(WIN32)
-    target_link_libraries(Kartovasiya PRIVATE winmm)
+    target_link_libraries(Shichoy PRIVATE winmm)
     # release build = no console window
-    set_target_properties(Kartovasiya PROPERTIES
+    set_target_properties(Shichoy PROPERTIES
         VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     if(MSVC)
-        target_link_options(Kartovasiya PRIVATE
+        target_link_options(Shichoy PRIVATE
             "$<$<CONFIG:Release>:/SUBSYSTEM:WINDOWS>"
             "$<$<CONFIG:Release>:/ENTRY:mainCRTStartup>")
     endif()

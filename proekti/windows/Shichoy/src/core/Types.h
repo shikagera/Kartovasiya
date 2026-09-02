@@ -1,4 +1,4 @@
-// Core types / Базовые типы — Kartovasiya (Картовасия)
+// Core types / Базовые типы — Shichoy (Шичой)
 #pragma once
 #include <cstdint>
 #include <string>
@@ -7,7 +7,7 @@
 #include <random>
 #include "raylib.h"
 
-namespace kv {
+namespace shichoy {
 
 // ── Language / Язык ───────────────────────────────────────────────────────
 enum class Lang { Ru = 0, En = 1 };
@@ -107,4 +107,4 @@ inline Color scaleC(Color c, float k) {
 inline float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 inline int   clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-} // namespace kv
+} // namespace shichoy

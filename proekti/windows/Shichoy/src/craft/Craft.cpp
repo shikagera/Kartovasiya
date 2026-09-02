@@ -1,7 +1,7 @@
 #include "craft/Craft.h"
 #include <algorithm>
 
-namespace kv {
+namespace shichoy {
 
 constexpr float CRAFT_CHANCE_CAP = 0.70f;   // потолок успеха по концепту
 
@@ -160,4 +160,4 @@ LS applyCraft(const CraftPlan& plan, bool success, bool perfect,
     return LS("", "");
 }
 
-} // namespace kv
+} // namespace shichoy

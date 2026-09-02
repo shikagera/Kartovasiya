@@ -2,7 +2,7 @@
 #pragma once
 #include "core/Cards.h"
 
-namespace kv {
+namespace shichoy {
 
 constexpr int TILE = 32;
 constexpr int MAP_W = 96;
@@ -83,4 +83,4 @@ private:
     mutable float fogT_ = 0.0f;
 };
 
-} // namespace kv
+} // namespace shichoy

@@ -3,7 +3,7 @@
 #pragma once
 #include "core/Cards.h"
 
-namespace kv {
+namespace shichoy {
 namespace art {
 
 // ── Palette / Палитра (тёмное готическое Таро) ────────────────────────────
@@ -70,4 +70,4 @@ void drawEnemyBody(Vector2 center, float scale, uint32_t seed, ElementId flavour
                    float t, float shake, Color tint, int phase);
 
 } // namespace art
-} // namespace kv
+} // namespace shichoy

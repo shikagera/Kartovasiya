@@ -4,7 +4,7 @@
 #include "combat/Combat.h"
 #include "craft/Craft.h"
 
-namespace kv {
+namespace shichoy {
 
 enum class Scene : int {
     Menu = 0,
@@ -129,4 +129,4 @@ private:
     int   menuIndex_ = 0;
 };
 
-} // namespace kv
+} // namespace shichoy

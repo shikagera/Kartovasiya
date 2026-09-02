@@ -1,4 +1,4 @@
-# Картовасия — Windows-версия (C++20 + raylib)
+# Шичой — Windows-версия (C++20 + raylib)
 
 Бесконечный аркадный рогалик: тёмный оверворлд сверху + пошаговые карточные бои
 от первого лица. Протагонист — мрачный аристократ-маг во фраке и цилиндре.
@@ -23,7 +23,7 @@ build.bat
 ```
 
 Скрипт сам находит Visual Studio через `vswhere`, поднимает `vcvars64`,
-конфигурирует CMake и собирает. Результат: `build\bin\Kartovasiya.exe`.
+конфигурирует CMake и собирает. Результат: `build\bin\Shichoy.exe`.
 
 ```bash
 run.bat
@@ -37,7 +37,7 @@ raylib лежит в `external/raylib` (клон тега 5.5). Если пап�
 Служебные режимы:
 
 ```bash
-build\bin\Kartovasiya.exe --selftest
+build\bin\Shichoy.exe --selftest
 ```
 
 прогоняет 180 боёв на глубинах 1–15 и 200 операций крафта без окна: ловит
@@ -45,7 +45,7 @@ build\bin\Kartovasiya.exe --selftest
 шанса крафта не пробит.
 
 ```bash
-build\bin\Kartovasiya.exe --shot
+build\bin\Shichoy.exe --shot
 ```
 
 сохраняет по кадру с каждой сцены рядом с .exe.
@@ -112,7 +112,7 @@ build\bin\Kartovasiya.exe --shot
 
 **Мета-прогресс.** Уехавший на карете забег банкует все материалы и конвертирует
 их в постоянный бонус к максимуму HP; смерть сохраняет только четверть.
-Сохранение — `kartovasiya_meta.bin` рядом с .exe.
+Сохранение — `shichoy_meta.bin` рядом с .exe.
 
 **Языки.** Весь текст двуязычный (RU/EN), переключается в меню.
 

@@ -5,9 +5,9 @@
 #include <cstdio>
 #include <cstring>
 
-namespace kv {
+namespace shichoy {
 
-static const char* SAVE_FILE = "kartovasiya_meta.bin";
+static const char* SAVE_FILE = "shichoy_meta.bin";
 
 // ── Meta save / Сохранение мета-прогресса ─────────────────────────────────
 static void saveMeta(const MetaProgress& m) {
@@ -174,13 +174,16 @@ void Game::drawMenu() {
     art::drawAristocratSide(Vector2{ cx, sh_ * 0.36f }, 2.1f, time_,
                             0.5f + 0.5f * std::sin(time_ * 0.8f));
 
-    const char* title = g_lang == Lang::Ru ? "КАРТОВАСИЯ" : "KARTOVASIYA";
+    const char* title = g_lang == Lang::Ru ? "ШИЧОЙ" : "SHICHOY";
     const char* sub = g_lang == Lang::Ru ? "бесконечный аркадный рогалик на картах Таро"
                                          : "an endless arcade roguelike of tarot cards";
+    // Короткое имя — берём кеглем и разрядкой, чтобы держало верх экрана.
+    const float titleSize = 62.0f, titleGap = 14.0f;
     DrawTextEx(art::fontTitle(), title,
-               Vector2{ cx - MeasureTextEx(art::fontTitle(), title, 54.0f, 6.0f).x * 0.5f, sh_ * 0.06f },
-               54.0f, 6.0f, art::pal::GoldLit);
-    art::textC(sub, cx, sh_ * 0.06f + 72.0f, 15.0f, withA(art::pal::Vellum, 200));
+               Vector2{ cx - MeasureTextEx(art::fontTitle(), title, titleSize, titleGap).x * 0.5f,
+                        sh_ * 0.06f },
+               titleSize, titleGap, art::pal::GoldLit);
+    art::textC(sub, cx, sh_ * 0.06f + 80.0f, 15.0f, withA(art::pal::Vellum, 200));
 
     const LS items[4] = {
         LS("Новый забег", "New Run"),
@@ -830,4 +833,4 @@ void Game::frame() {
     EndDrawing();
 }
 
-} // namespace kv
+} // namespace shichoy

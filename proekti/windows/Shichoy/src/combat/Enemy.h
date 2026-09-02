@@ -2,7 +2,7 @@
 #pragma once
 #include "core/Cards.h"
 
-namespace kv {
+namespace shichoy {
 
 enum class MoveKind : int {
     Attack = 0,   // обычный удар
@@ -86,4 +86,4 @@ struct Enemy {
 
 Enemy genEnemy(Rng& r, int depth, bool boss);
 
-} // namespace kv
+} // namespace shichoy

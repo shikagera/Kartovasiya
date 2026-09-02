@@ -2,7 +2,7 @@
 #pragma once
 #include "core/Content.h"
 
-namespace kv {
+namespace shichoy {
 
 // Прямые действия карт-заклинаний.
 enum class SpellEffect : int {
@@ -81,4 +81,4 @@ private:
     std::vector<Card> exhausted_;
 };
 
-} // namespace kv
+} // namespace shichoy

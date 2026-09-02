@@ -1,7 +1,7 @@
 #include "core/Content.h"
 #include <unordered_map>
 
-namespace kv {
+namespace shichoy {
 
 Lang g_lang = Lang::Ru;
 Rng  g_rng(0xC0FFEEull);
@@ -254,4 +254,4 @@ const std::vector<LS>& affixNames() {
     return v;
 }
 
-} // namespace kv
+} // namespace shichoy

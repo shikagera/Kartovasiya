@@ -5,7 +5,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace kv {
+namespace shichoy {
 
 // Геометрия боевой сцены
 static Vector2 enemyCenter(int sw, int sh) { return Vector2{ sw * 0.5f, sh * 0.34f }; }
@@ -373,10 +373,10 @@ void Game::drawReward() {
     art::drawVignette(sw_, sh_, 0.9f);
 }
 
-} // namespace kv
+} // namespace shichoy
 
 // ── Dev helper / Служебный прыжок в сцену (для проверки кадра) ────────────
-namespace kv {
+namespace shichoy {
 void Game::debugForceScene(int which) {
     switch (which) {
         case 0: scene_ = Scene::Menu; break;
@@ -413,4 +413,4 @@ void Game::debugForceScene(int which) {
         default: break;
     }
 }
-} // namespace kv
+} // namespace shichoy

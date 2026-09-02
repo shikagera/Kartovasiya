@@ -1,4 +1,4 @@
-// Kartovasiya / Картовасия — Windows, C++20, raylib. Точка входа.
+// Shichoy / Шичой — Windows, C++20, raylib. Точка входа.
 #include "app/Game.h"
 #include "art/ProcArt.h"
 #include "craft/Craft.h"
@@ -9,7 +9,7 @@
 // Гоняет бои на разных глубинах со случайной игрой, ловит зависания и
 // показывает, во что складывается баланс.
 static int runSelftest() {
-    using namespace kv;
+    using namespace shichoy;
     Rng rng(0xBEEF1234);
     int wins = 0, losses = 0, stalls = 0, reactions = 0, spotsBroken = 0;
 
@@ -92,12 +92,12 @@ int main(int argc, char** argv) {
     if (selftest) return runSelftest();
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
-    InitWindow(1280, 720, "Kartovasiya / Картовасия");
+    InitWindow(1280, 720, "Shichoy / Шичой");
     SetWindowMinSize(1024, 640);
     SetTargetFPS(60);
     SetExitKey(KEY_NULL);          // ESC используется внутри игры
 
-    kv::Game game;
+    shichoy::Game game;
     game.init();
 
     if (shotMode) {

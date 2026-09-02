@@ -1,5 +1,5 @@
 @echo off
-REM ── Kartovasiya build script (Windows / MSVC) ──────────────────────────
+REM ── Shichoy build script (Windows / MSVC) ──────────────────────────
 setlocal
 set ROOT=%~dp0
 set CFG=%1
@@ -18,5 +18,5 @@ if errorlevel 1 ( echo [!] vcvars64 failed & exit /b 1 )
 "%CMAKE%" --build "%ROOT%build" || exit /b 1
 
 echo.
-echo [ok] %ROOT%build\bin\Kartovasiya.exe
+echo [ok] %ROOT%build\bin\Shichoy.exe
 endlocal

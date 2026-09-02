@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace kv {
+namespace shichoy {
 
 using art::hash01;
 using art::fbm;
@@ -465,4 +465,4 @@ void Overworld::draw(float time) const {
 
 void Overworld::drawHud(float) const { /* HUD рисует Game — здесь только мир */ }
 
-} // namespace kv
+} // namespace shichoy

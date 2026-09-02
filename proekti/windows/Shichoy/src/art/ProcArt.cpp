@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace kv {
+namespace shichoy {
 namespace art {
 
 static Font s_ui   = { 0 };
@@ -494,4 +494,4 @@ void drawEnemyBody(Vector2 center, float scale, uint32_t seed, ElementId flavour
 }
 
 } // namespace art
-} // namespace kv
+} // namespace shichoy

@@ -3,7 +3,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace kv {
+namespace shichoy {
 
 const EnemyMove* Enemy::currentMove() const {
     if (phases.empty()) return nullptr;
@@ -210,4 +210,4 @@ Enemy genEnemy(Rng& r, int depth, bool boss) {
     return e;
 }
 
-} // namespace kv
+} // namespace shichoy

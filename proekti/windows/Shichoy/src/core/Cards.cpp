@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cstdio>
 
-namespace kv {
+namespace shichoy {
 
 static uint32_t s_uid = 1;
 
@@ -345,4 +345,4 @@ bool Deck::draw(Card& out, Rng& r) {
 void Deck::discard(const Card& c) { discardPile_.push_back(c); }
 void Deck::exhaust(const Card& c) { exhausted_.push_back(c); }
 
-} // namespace kv
+} // namespace shichoy
