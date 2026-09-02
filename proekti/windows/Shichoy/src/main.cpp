@@ -96,10 +96,12 @@ static int runSelftest() {
     // Запреты: одна и та же стихия, Ultima дальше, не-стихии
     bool guardsOk = !evaluateMerge(pure(ElementId::Fire), pure(ElementId::Fire)).ok
                  && !evaluateMerge(ult, pure(ElementId::Metal)).ok
-                 && !evaluateMerge(genSpellCard(rng, 3), pure(ElementId::Fire)).ok
+                 && !evaluateMerge(genEffectCard(rng, 3), pure(ElementId::Fire)).ok
                  && !evaluateMerge(a3, pure(ElementId::Metal)).ok;   // III + база запрещён
-    std::printf("ladder       : %s, guards %s, ultima chain %d elements\n",
-                ladderOk ? "OK" : "BROKEN", guardsOk ? "OK" : "BROKEN", int(ult.chain.size()));
+    bool enchantOk = evaluateMerge(genSpellCard(rng, 3), pure(ElementId::Fire)).ok;
+    std::printf("ladder       : %s, guards %s, enchant %s, ultima chain %d elements\n",
+                ladderOk ? "OK" : "BROKEN", guardsOk ? "OK" : "BROKEN",
+                enchantOk ? "OK" : "BROKEN", int(ult.chain.size()));
 
     // Проверка реакций: все 120 пар обязаны что-то возвращать
     int pairs = 0;
@@ -117,7 +119,7 @@ static int runSelftest() {
     std::printf("deck size    : %d cards after crafting\n", int(deck.library().size()));
 
     bool ok = (stalls == 0) && (pairs == 120) && (maxChance <= 0.7001f) && (wins > 0)
-           && (losses > 0) && ladderOk && guardsOk;
+           && (losses > 0) && ladderOk && guardsOk && enchantOk;
     std::printf("result       : %s\n", ok ? "OK" : "FAILED");
     return ok ? 0 : 1;
 }

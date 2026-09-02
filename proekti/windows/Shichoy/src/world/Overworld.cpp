@@ -473,3 +473,36 @@ void Overworld::draw(float time) const {
 void Overworld::drawHud(float) const { /* HUD рисует Game — здесь только мир */ }
 
 } // namespace shichoy
+
+namespace shichoy {
+
+// Тайл под ногами решает, где именно принят бой.
+Biome Overworld::biomeAt(Vector2 p) const {
+    int tx = int(std::floor(p.x / TILE)), ty = int(std::floor(p.y / TILE));
+    // Могилы и камни редки — смотрим на окрестность, а не только под ноги.
+    int votes[int(Biome::COUNT)] = { 0 };
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            Biome b;
+            switch (at(tx + dx, ty + dy)) {
+                case Tile::Water:
+                case Tile::Mud:       b = Biome::Mire; break;
+                case Tile::Rock:      b = Biome::Stone; break;
+                case Tile::Tree:      b = Biome::Thicket; break;
+                case Tile::Bramble:   b = Biome::Bramble; break;
+                case Tile::Grave:     b = Biome::Graves; break;
+                case Tile::DarkGrass: b = Biome::Rot; break;
+                default:              b = Biome::Meadow; break;
+            }
+            // Приметное место весит больше пустой травы.
+            votes[int(b)] += (b == Biome::Meadow) ? 1 : 3;
+            if (dx == 0 && dy == 0) votes[int(b)] += 2;
+        }
+    }
+    int best = 0;
+    for (int i = 1; i < int(Biome::COUNT); ++i)
+        if (votes[i] > votes[best]) best = i;
+    return Biome(best);
+}
+
+} // namespace shichoy

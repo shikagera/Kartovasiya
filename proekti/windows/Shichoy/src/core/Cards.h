@@ -93,6 +93,9 @@ public:
     int drawCount() const { return int(drawPile_.size()); }
     int discardCount() const { return int(discardPile_.size()); }
     void addCard(const Card& c) { library_.push_back(c); }
+    void removeCard(int i) {
+        if (i >= 0 && i < int(library_.size())) library_.erase(library_.begin() + i);
+    }
 private:
     std::vector<Card> library_;      // всё, что есть у игрока в забеге
     std::vector<Card> drawPile_;

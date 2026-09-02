@@ -14,6 +14,7 @@ namespace shichoy {
 
 struct MergeInfo {
     bool ok = false;
+    bool enchant = false;          // заклинание принимает стихию, а не растёт в уровне
     MergeTier tier = MergeTier::Base;
     float mult = 1.0f;
     int   power = 0;

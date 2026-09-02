@@ -151,6 +151,20 @@ void Game::afterCombat() {
     pendingEnt_ = -1;
     world_.clearEncounter();
     if (pendingBoss_) {
+        // Босс всегда отдаёт реликвию — если ещё есть что отдавать.
+        RelicId got = rollRelic(rng_, player_.relics);
+        if (got != RelicId::None) {
+            player_.relics.push_back(got);
+            const RelicDef& rd = relicDef(got);
+            openDialog(LS("В руинах кое-что осталось", "Something Was Left in the Ruins"),
+                       LS(std::string("«") + rd.name.ru + "». " + rd.desc.ru,
+                          std::string("\"") + rd.name.en + "\". " + rd.desc.en),
+                       { { LS("Забрать и спуститься глубже", "Take it and descend"), 1 },
+                         { LS("Забрать и остаться", "Take it and stay"), 2 } },
+                       100);
+            audio::play(audio::Sfx::CraftPerfect, 0.9f);
+            return;
+        }
         openDialog(LS("Руины проседают", "The Ruins Give Way"),
                    LS("Пол уходит вниз. Дальше — темнее и богаче. Спуститься?",
                       "The floor sinks away. Below is darker, and richer. Descend?"),
@@ -273,6 +287,32 @@ void Game::drawOverworld() {
              inv_.total(), int(deck_.library().size()));
     art::text(buf, 26, 70, 13.0f, withA(art::pal::Vellum, 210));
 
+    // Где ты стоишь — там и будешь драться. Показываем это заранее.
+    {
+        const BiomeMod& bm = biomeMod(world_.biomeAt(world_.playerPos()));
+        Rectangle bb{ 12, 104, 268, 46 };
+        panel(bb, 0.82f);
+        art::text(bm.name.c_str(), bb.x + 14, bb.y + 7, 15.0f, lerpC(bm.tint, WHITE, 0.35f));
+        char eb[160];
+        snprintf(eb, sizeof eb, g_lang == Lang::Ru ? "%s и %s сильнее на %d%%"
+                                                   : "%s and %s stronger by %d%%",
+                 elem(bm.a).name.c_str(), elem(bm.b).name.c_str(), int(bm.bonus * 100));
+        art::text(eb, bb.x + 14, bb.y + 26, 12.0f, withA(art::pal::Vellum, 215));
+    }
+
+    // Реликвии забега
+    if (!player_.relics.empty()) {
+        float rx = 12.0f, ry = 158.0f;
+        for (size_t i = 0; i < player_.relics.size(); ++i) {
+            const RelicDef& rd = relicDef(player_.relics[i]);
+            Rectangle rr{ rx, ry + i * 24.0f, 268.0f, 21.0f };
+            DrawRectangleRounded(rr, 0.4f, 5, Color{ 10, 8, 14, 200 });
+            DrawRectangleRoundedLinesEx(rr, 0.4f, 5, 1.0f, withA(rd.tint, 190));
+            DrawCircleV(Vector2{ rr.x + 12, rr.y + 10 }, 4.0f, rd.tint);
+            art::text(rd.name.c_str(), rr.x + 22, rr.y + 4, 12.0f, withA(art::pal::Parchment, 230));
+        }
+    }
+
     // Подсказки
     int near_ = world_.nearestInteractable(46.0f);
     const char* hint = g_lang == Lang::Ru
@@ -352,6 +392,8 @@ void Game::interact(int entIndex) {
                        "\"Relics? I take everything. I pay in cards — mine, stolen, someone else's.\""),
                     { { LS("Обменять 10 материалов на карту", "Trade 10 materials for a card"), 23,
                         inv_.total() >= 10 },
+                      { LS("Купить реликвию (18 материалов)", "Buy a relic (18 materials)"), 25,
+                        inv_.total() >= 18 },
                       { LS("Переплавить материалы", "Transmute materials"), 24 },
                       { LS("Уйти", "Leave"), 0 } }, 1);
             }
@@ -446,6 +488,24 @@ void Game::resolveDialog(int action) {
             scene_ = Scene::Overworld;
             break;
         }
+        case 25: {                                            // реликвия у скупщика
+            int cost = 18, paid = 0;
+            for (int i = 0; i < MATERIAL_COUNT && paid < cost; ++i) {
+                int take = std::min(inv_.mats[i], cost - paid);
+                inv_.mats[i] -= take; paid += take;
+            }
+            RelicId got = rollRelic(rng_, player_.relics);
+            if (got == RelicId::None) {
+                toast(LS("У него больше ничего для вас нет.", "He has nothing left for you."));
+            } else {
+                player_.relics.push_back(got);
+                audio::play(audio::Sfx::CraftPerfect, 0.85f);
+                toast(LS(std::string("Реликвия: ") + relicDef(got).name.ru,
+                         std::string("Relic: ") + relicDef(got).name.en));
+            }
+            scene_ = Scene::Overworld;
+            break;
+        }
         case 24:
             craftAction_ = int(CraftAction::Transmute);
             craftTarget_ = -1;
@@ -529,6 +589,8 @@ void Game::updateTablePull(float dt) {
     if (pullT_ >= 1.55f) {
         Enemy e = genEnemy(rng_, depth_ + (pendingBoss_ ? 2 : 0), pendingBoss_);
         combat_.begin(&deck_, &player_, std::move(e), depth_ + (pendingBoss_ ? 2 : 0), &rng_);
+        // Бой наследует место, где его приняли.
+        combat_.setBiome(world_.biomeAt(world_.playerPos()));
         hoverCard_ = -1;
         rewardTaken_ = false;
         scene_ = Scene::Combat;
@@ -616,12 +678,13 @@ void Game::drawCraft() {
     Rectangle actBox{ 292, 96, 300, 250 };
     panel(actBox, 0.95f);
     art::text(g_lang == Lang::Ru ? "Работа" : "Work", actBox.x + 16, actBox.y + 12, 17.0f, art::pal::GoldLit);
-    static const LS actNames[4] = {
+    static const LS actNames[5] = {
         LS("Выковать карту", "Forge a Card"), LS("Усилить карту", "Upgrade a Card"),
-        LS("Мутировать карту", "Mutate a Card"), LS("Переплавить", "Transmute")
+        LS("Мутировать карту", "Mutate a Card"), LS("Переплавить", "Transmute"),
+        LS("Сжечь карту", "Burn a Card")
     };
-    for (int i = 0; i < 4; ++i) {
-        Rectangle r{ actBox.x + 16, actBox.y + 46.0f + i * 46.0f, actBox.width - 32, 38.0f };
+    for (int i = 0; i < 5; ++i) {
+        Rectangle r{ actBox.x + 16, actBox.y + 40.0f + i * 40.0f, actBox.width - 32, 34.0f };
         bool sel = (craftAction_ == i);
         if (sel) DrawRectangleRounded(Rectangle{ r.x - 4, r.y - 3, r.width + 8, r.height + 6 }, 0.3f, 6,
                                       withA(art::pal::Gold, 40));
@@ -653,11 +716,21 @@ void Game::drawCraft() {
     snprintf(pc, sizeof pc, g_lang == Lang::Ru ? "Шанс: %d%%" : "Chance: %d%%", int(plan_.chance * 100));
     art::text(pc, planBox.x + 16, planBox.y + 140, 17.0f, art::pal::GoldLit);
 
-    bool needTarget = (craftAction_ == 1 || craftAction_ == 2);
+    bool isBurn = (craftAction_ == int(CraftAction::Burn));
+    bool needTarget = (craftAction_ == 1 || craftAction_ == 2 || isBurn);
     bool ok = affordable && (!needTarget || craftTarget_ >= 0) && !mini_.running();
     Rectangle startBtn{ planBox.x + planBox.width - 214.0f, planBox.y + 186.0f, 198.0f, 44.0f };
-    if (button(startBtn, g_lang == Lang::Ru ? "Начать работу [SPACE]" : "Begin work [SPACE]", ok, 16.0f)) {
+    const char* startLabel = isBurn ? (g_lang == Lang::Ru ? "Сжечь [SPACE]" : "Burn it [SPACE]")
+                                    : (g_lang == Lang::Ru ? "Начать работу [SPACE]" : "Begin work [SPACE]");
+    if (button(startBtn, startLabel, ok, 16.0f)) {
         plan_.targetCard = craftTarget_;
+        if (isBurn) {
+            // Огонь не промахивается — мини-игра тут ни к чему.
+            craftResult_ = applyCraft(plan_, true, false, deck_, inv_, depth_, rng_);
+            craftTarget_ = clampi(craftTarget_, -1, int(deck_.library().size()) - 1);
+            audio::play(audio::Sfx::CraftFail, 0.7f, 0.8f);
+            return;
+        }
         audio::play(audio::Sfx::CraftStart, 0.8f);
         mini_.start(plan_.chance, rng_);
         planActive_ = true;

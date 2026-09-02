@@ -1,4 +1,5 @@
 #include "craft/Craft.h"
+#include "core/Merge.h"
 #include <algorithm>
 
 namespace shichoy {
@@ -49,6 +50,14 @@ CraftPlan makePlan(CraftAction a, int depth, const Deck& deck, int targetCard, R
             cost(3, 1, 2);
             p.chance = 0.45f;
             break;
+        case CraftAction::Burn:
+            p.title = LS("Сжечь карту", "Burn a Card");
+            p.desc  = LS("Карта уходит из колоды навсегда, часть материала возвращается. "
+                         "Колоду нельзя ужать меньше шести карт.",
+                         "The card leaves the deck for good and returns some materials. "
+                         "The deck cannot go below six cards.");
+            p.chance = 1.0f;          // огонь не промахивается
+            break;
         case CraftAction::Transmute:
             p.title = LS("Переплавить материалы", "Transmute Materials");
             p.desc  = LS("Меняет излишки на редкие материалы.",
@@ -57,8 +66,9 @@ CraftPlan makePlan(CraftAction a, int depth, const Deck& deck, int targetCard, R
             p.chance = 0.65f;
             break;
     }
-    // Глубже — сложнее, но потолок всё равно 70%
-    p.chance = clampf(p.chance + depth * 0.01f, 0.20f, CRAFT_CHANCE_CAP);
+    // Глубже — сложнее, но потолок всё равно 70%. Сжигание — вне этого правила.
+    if (a != CraftAction::Burn)
+        p.chance = clampf(p.chance + depth * 0.01f, 0.20f, CRAFT_CHANCE_CAP);
     (void)deck;
     return p;
 }
@@ -150,6 +160,19 @@ LS applyCraft(const CraftPlan& plan, bool success, bool perfect,
             if (perfect) mutateCard(c, r, depth);
             return LS(std::string("Мутация: ") + c.name.ru,
                       std::string("Mutated: ") + c.name.en);
+        }
+        case CraftAction::Burn: {
+            if (!validTarget) return LS("Нечего сжигать.", "Nothing to burn.");
+            if (lib.size() <= 6)
+                return LS("Колода и так на пределе — шесть карт минимум.",
+                          "The deck is already at its floor of six cards.");
+            Card gone = lib[size_t(idx)];
+            // Возврат тем больше, чем ценнее карта.
+            int back = 2 + int(gone.rarity) + gone.level + tierRank(gone.tier);
+            for (int i = 0; i < back; ++i) inv.add(r.i(0, MATERIAL_COUNT - 1), 1);
+            deck.removeCard(idx);
+            return LS(std::string("Сожжено: ") + gone.name.ru + ". Возврат: " + std::to_string(back) + ".",
+                      std::string("Burned: ") + gone.name.en + ". Recovered: " + std::to_string(back) + ".");
         }
         case CraftAction::Transmute: {
             int gained = perfect ? 5 : 3;

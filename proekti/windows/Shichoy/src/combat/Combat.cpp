@@ -58,6 +58,8 @@ void Combat::begin(Deck* deck, Player* player, Enemy enemy, int depth, Rng* rng)
     markTurns_ = 0;
     ampBonus_ = 0.0f;
     ultimaUsed_ = false;
+    undyingUsed_ = false;
+    firstCardTurn_ = true;
     shake_ = 0.0f;
     reactionFlash_ = 0.0f;
     lastReaction_ = LS("", "");
@@ -70,13 +72,14 @@ void Combat::begin(Deck* deck, Player* player, Enemy enemy, int depth, Rng* rng)
 }
 
 void Combat::startPlayerTurn() {
-    cardLimit_ = player_->baseCardLimit;
+    cardLimit_ = player_->baseCardLimit + (player_->has(RelicId::ExtraSlot) ? 1 : 0);
     cardsLeft_ = cardLimit_;
+    firstCardTurn_ = true;
     state_ = CombatState::PlayerTurn;
 
     // Рука между ходами не сбрасывается: всё несыгранное остаётся лежать,
     // сверху приходит фиксированный добор. Потолка у руки нет.
-    drawHand(player_->drawPerTurn);
+    drawHand(player_->drawPerTurn + (player_->has(RelicId::DeepDraw) ? 2 : 0));
 
     if (const EnemyMove* m = enemy_.currentMove()) {
         std::string mult = enemy_.actions > 1 ? ("  x" + num(enemy_.actions)) : std::string();
@@ -111,6 +114,15 @@ void Combat::cycleTarget(int dir) {
     target_ = -1;
 }
 
+// Место боя усиливает свои стихии — исследование становится подготовкой.
+float Combat::biomeMul(const Card& c) const {
+    const BiomeMod& m = biomeMod(biome_);
+    if (biomeFavours(biome_, c.element)) return 1.0f + m.bonus;
+    for (ElementId e : c.chain)
+        if (biomeFavours(biome_, e)) return 1.0f + m.bonus;
+    return 1.0f;
+}
+
 // ── Damage / Урон ─────────────────────────────────────────────────────────
 int Combat::dealDamageToEnemy(int dmg, bool precise, Color col) {
     if (dmg <= 0) return 0;
@@ -121,6 +133,7 @@ int Combat::dealDamageToEnemy(int dmg, bool precise, Color col) {
     if (enemy_.statusStacks(StatusId::Vulnerable) > 0 || enemy_.exposed) dmg = int(dmg * 1.5f);
     int corr = enemy_.statusStacks(StatusId::Corrode);
     if (corr > 0) dmg += corr;
+    if (player_->has(RelicId::BloodPact)) dmg = int(dmg * 1.30f);
 
     // Щит врага
     if (enemy_.guard > 0) {
@@ -134,7 +147,8 @@ int Combat::dealDamageToEnemy(int dmg, bool precise, Color col) {
     // Выбранная точка
     int spot = target_;
     if (spot >= 0 && spot < int(enemy_.spots.size()) && !enemy_.spots[size_t(spot)].destroyed) {
-        bool focused = player_->statusStacks(StatusId::Focus) > 0;
+        bool focused = player_->statusStacks(StatusId::Focus) > 0
+                    || player_->has(RelicId::SpotHunter);
         if (!precise && !focused && rng_->chance(0.22f)) {
             audio::play(audio::Sfx::Miss, 0.7f);
             pushFloat(g_lang == Lang::Ru ? "мимо" : "miss", Vector2{ 0, -20 }, hex(0x8A8A94), 18.0f);
@@ -217,6 +231,14 @@ void Combat::damagePlayer(int dmg, const LS& src) {
     shake_ = std::max(shake_, 0.55f);
     pushLog(LS(std::string(src.ru) + ": -" + num(dmg) + " HP",
                std::string(src.en) + ": -" + num(dmg) + " HP"), hex(0xFF6B6B));
+    // Восковой двойник: раз за бой смертельный удар оставляет с 1 HP.
+    if (player_->hp <= 0 && player_->has(RelicId::Undying) && !undyingUsed_) {
+        undyingUsed_ = true;
+        player_->hp = 1;
+        audio::play(audio::Sfx::Heal, 1.0f, 0.7f);
+        pushLog(LS("Восковой двойник трескается вместо вас. 1 HP.",
+                   "The waxen double cracks in your place. 1 HP."), hex(0xD8CBB3));
+    }
     if (player_->hp <= 0) {
         player_->hp = 0;
         state_ = CombatState::Lost;
@@ -227,7 +249,7 @@ void Combat::damagePlayer(int dmg, const LS& src) {
 
 // ── Reactions ─────────────────────────────────────────────────────────────
 void Combat::applyReaction(const ReactionDef& rc, const Card& card) {
-    float amp = 1.0f + ampBonus_;
+    float amp = (1.0f + ampBonus_) * biomeMul(card);
     ampBonus_ = 0.0f;
 
     int dmg = int((card.power * rc.mult + rc.bonus) * amp);
@@ -238,7 +260,15 @@ void Combat::applyReaction(const ReactionDef& rc, const Card& card) {
     pushLog(LS(std::string("Реакция: ") + rc.name.ru + " — " + rc.desc.ru,
                std::string("Reaction: ") + rc.name.en + " — " + rc.desc.en), rc.tint);
 
-    dealDamageToEnemy(dmg, has(card.flags, CardFlags::Precise), rc.tint);
+    // Эхо в пустой зале: реакция срабатывает дважды, по 60% каждая.
+    if (player_->has(RelicId::ReactionEcho)) {
+        int half = std::max(1, int(dmg * 0.6f));
+        dealDamageToEnemy(half, has(card.flags, CardFlags::Precise), rc.tint);
+        if (enemy_.alive()) dealDamageToEnemy(half, has(card.flags, CardFlags::Precise), rc.tint);
+        pushLog(LS("Эхо повторяет реакцию.", "The echo repeats the reaction."), hex(0x9D4EDD));
+    } else {
+        dealDamageToEnemy(dmg, has(card.flags, CardFlags::Precise), rc.tint);
+    }
 
     if (rc.applies != StatusId::None) {
         if (statusDef(rc.applies).onPlayer) player_->addStatus(rc.applies, rc.statusStacks, rc.statusTurns);
@@ -262,7 +292,7 @@ void Combat::applyReaction(const ReactionDef& rc, const Card& card) {
 // ── Card resolution / Разрешение карт ─────────────────────────────────────
 // Составная карта не вешает метку — она разряжается вся сразу.
 void Combat::resolveCompound(const Card& c) {
-    float amp = 1.0f + ampBonus_; ampBonus_ = 0.0f;
+    float amp = (1.0f + ampBonus_) * biomeMul(c); ampBonus_ = 0.0f;
     const int rank = tierRank(c.tier);
     const float mult = tierMult(c.tier);
     int dmg = int(c.power * mult * amp);
@@ -336,7 +366,7 @@ void Combat::resolveElement(const Card& c) {
     }
 
     // Ставим метку
-    float amp = 1.0f + ampBonus_; ampBonus_ = 0.0f;
+    float amp = (1.0f + ampBonus_) * biomeMul(c); ampBonus_ = 0.0f;
     mark_ = e;
     markTurns_ = 3;
     dealDamageToEnemy(int(c.power * amp), has(c.flags, CardFlags::Precise), elem(e).primary);
@@ -346,7 +376,7 @@ void Combat::resolveElement(const Card& c) {
 }
 
 void Combat::resolveSpell(const Card& c) {
-    float amp = 1.0f + ampBonus_;
+    float amp = (1.0f + ampBonus_) * biomeMul(c);
     bool precise = has(c.flags, CardFlags::Precise);
     Color col = c.tint();
 
@@ -468,7 +498,17 @@ void Combat::playCard(int handIndex) {
     if (!canPlay(handIndex)) return;
     Card c = hand_[size_t(handIndex)];
     hand_.erase(hand_.begin() + handIndex);
-    cardsLeft_ -= c.cost;
+
+    // Право первой руки: первая карта за ход не тратит слот.
+    bool freeCard = firstCardTurn_ && player_->has(RelicId::FirstFree);
+    firstCardTurn_ = false;
+    if (!freeCard) cardsLeft_ -= c.cost;
+
+    // Кровный вексель: каждая карта оплачивается кровью.
+    if (player_->has(RelicId::BloodPact)) {
+        player_->hp = std::max(1, player_->hp - 2);
+        pushFloat("-2", Vector2{ -160, 90 }, hex(0x9B2226), 18.0f);
+    }
 
     // Сначала шорох бумаги — карту вытаскивают из руки, — потом голос карты.
     audio::play(audio::Sfx::CardDraw, 0.55f, 0.92f + 0.16f * rng_->f());
@@ -633,7 +673,8 @@ void Combat::tickStatusesEndOfRound() {
     player_->statuses.erase(std::remove_if(player_->statuses.begin(), player_->statuses.end(),
         [](const StatusInst& s) { return s.turns == 0; }), player_->statuses.end());
 
-    if (markTurns_ > 0 && --markTurns_ == 0) mark_ = ElementId::None;
+    if (!player_->has(RelicId::LingeringMark) && markTurns_ > 0 && --markTurns_ == 0)
+        mark_ = ElementId::None;
 
     if (enemy_.hp <= 0) { onVictory(); return; }
     if (!player_->alive()) { state_ = CombatState::Lost; return; }
@@ -648,11 +689,38 @@ void Combat::onVictory() {
     state_ = CombatState::Won;
     audio::play(audio::Sfx::Victory, 0.9f);
     enemy_.hp = 0;
+
+    // Алембик: лучшая составная карта из руки уходит в колоду насовсем.
+    if (player_->has(RelicId::Alembic)) {
+        int best = -1, bestRank = 0;
+        for (int i = 0; i < int(hand_.size()); ++i) {
+            int rk = tierRank(hand_[size_t(i)].tier);
+            if (rk > bestRank) { bestRank = rk; best = i; }
+        }
+        if (best >= 0) {
+            deck_->addCard(hand_[size_t(best)]);
+            pushLog(LS(std::string("Алембик сохраняет: ") + hand_[size_t(best)].name.ru,
+                       std::string("The alembic keeps: ") + hand_[size_t(best)].name.en),
+                    hex(0xB5179E));
+            hand_.erase(hand_.begin() + best);
+        }
+    }
+    // Скупая ладонь: одна случайная карта из руки остаётся в колоде.
+    if (player_->has(RelicId::Hoarder) && !hand_.empty()) {
+        int i = rng_->i(0, int(hand_.size()) - 1);
+        deck_->addCard(hand_[size_t(i)]);
+        pushLog(LS(std::string("Скупая ладонь удерживает: ") + hand_[size_t(i)].name.ru,
+                   std::string("The miser's palm keeps: ") + hand_[size_t(i)].name.en),
+                hex(0xC2A24A));
+        hand_.erase(hand_.begin() + i);
+    }
+
     discardHand();
 
     // Материалы: тема врага + бонус за разрушенные точки и боссов.
     int rolls = 2 + depth_ / 3 + (enemy_.boss ? 3 : 0);
-    for (const auto& s : enemy_.spots) if (s.destroyed) rolls++;
+    int spotBonus = player_->has(RelicId::Gravedigger) ? 2 : 1;   // Лопата могильщика
+    for (const auto& s : enemy_.spots) if (s.destroyed) rolls += spotBonus;
     for (int i = 0; i < rolls; ++i) {
         int m = rng_->i(0, MATERIAL_COUNT - 1);
         if (rng_->chance(0.45f)) m = eidx(enemy_.flavour) % MATERIAL_COUNT;

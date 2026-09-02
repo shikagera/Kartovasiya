@@ -17,7 +17,8 @@ enum class CraftAction : int {
     Forge = 0,    // выковать новую карту
     Upgrade,      // усилить существующую
     Mutate,       // рискованная мутация
-    Transmute     // переплавить лишние материалы
+    Transmute,    // переплавить лишние материалы
+    Burn          // сжечь карту и вернуть часть материала
 };
 
 struct CraftPlan {

@@ -1,6 +1,8 @@
 // Combat / Бой: пошаговый, вид от первого лица, без маны — только лимит карт.
 #pragma once
 #include "combat/Enemy.h"
+#include "core/Biome.h"
+#include "core/Relics.h"
 
 namespace shichoy {
 
@@ -10,7 +12,12 @@ struct Player {
     int baseCardLimit = 5;   // сколько карт можно сыграть за ход
     int drawPerTurn = 5;     // добор в начале хода; размер руки не ограничен
     std::vector<StatusInst> statuses;
+    std::vector<RelicId> relics;
 
+    bool has(RelicId id) const {
+        for (RelicId r : relics) if (r == id) return true;
+        return false;
+    }
     int  statusStacks(StatusId s) const;
     void addStatus(StatusId s, int stacks, int turns);
     void removeNegative();
@@ -56,6 +63,8 @@ public:
     void flee();
     void cycleTarget(int dir);
     void setTarget(int spotIndex) { target_ = spotIndex; }
+    void setBiome(Biome b) { biome_ = b; }
+    Biome biome() const { return biome_; }
 
     // ── состояние для отрисовки ───────────────────────────────────────────
     CombatState state() const { return state_; }
@@ -91,6 +100,7 @@ private:
     void applyReaction(const ReactionDef& rc, const Card& card);
     void resolveElement(const Card& c);
     void resolveCompound(const Card& c);
+    float biomeMul(const Card& c) const;
     void resolveSpell(const Card& c);
     void resolveEffect(const Card& c);
     void onVictory();
@@ -114,7 +124,10 @@ private:
     int   target_ = -1;          // -1 = корпус (авто-наведение)
     ElementId mark_ = ElementId::None;
     int   markTurns_ = 0;
-    bool  ultimaUsed_ = false;   // Ultima — один раз за бой
+    Biome biome_ = Biome::Meadow;   // где принят бой
+    bool  ultimaUsed_ = false;
+    bool  undyingUsed_ = false;  // Восковой двойник — раз за бой
+    bool  firstCardTurn_ = true; // Право первой руки
     float ampBonus_ = 0.0f;      // от карт Amplify
     float timer_ = 0.0f;
     float shake_ = 0.0f;

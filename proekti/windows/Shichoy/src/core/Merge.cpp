@@ -169,8 +169,39 @@ static LS buildEffect(MergeTier tier, const std::vector<ElementId>& chain) {
 MergeInfo evaluateMerge(const Card& a, const Card& b) {
     MergeInfo r;
 
+    // Зачарование: заклинание принимает чистую стихию и начинает вешать её метку.
+    if (a.type == CardType::Spell && b.type == CardType::Element && b.tier == MergeTier::Base) {
+        if (a.chain.size() >= 2) {
+            r.reason = LS("Заклинание уже несёт две стихии.",
+                          "The spell already carries two elements.");
+            return r;
+        }
+        if (hasElem(a.chain, b.element)) {
+            r.reason = LS("Эта стихия уже вплетена в заклинание.",
+                          "That element is already woven in.");
+            return r;
+        }
+        r.ok = true;
+        r.enchant = true;
+        r.tier = MergeTier::Base;
+        r.mult = 1.0f;
+        r.chain = unite(a.chain, b.chain);
+        r.power = int(a.power * 1.25f) + 1;
+        r.cost = a.cost;
+        r.name = LS(std::string(elem(b.element).name.ru) + " " + a.name.ru,
+                    std::string(elem(b.element).name.en) + " " + a.name.en);
+        r.effect = LS(std::string("Заклинание принимает стихию «") + elem(b.element).name.ru
+                          + "»: сила +25%, удар вешает её метку.",
+                      std::string("The spell takes on ") + elem(b.element).name.en
+                          + ": +25% power, its strike applies that mark.");
+        return r;
+    }
+
     if (a.type != CardType::Element || b.type != CardType::Element) {
-        r.reason = LS("Смешиваются только карты стихий.", "Only element cards merge.");
+        r.reason = a.type == CardType::Effect || b.type == CardType::Effect
+            ? LS("Карты-эффекты не смешиваются.", "Effect cards do not merge.")
+            : LS("Стихию можно вплести в заклинание, но не наоборот.",
+                 "An element weaves into a spell, not the other way round.");
         return r;
     }
     if (a.tier == MergeTier::Ultima || b.tier == MergeTier::Ultima) {
@@ -225,6 +256,20 @@ MergeInfo evaluateMerge(const Card& a, const Card& b) {
 
 Card applyMerge(const Card& a, const Card& b, const MergeInfo& info) {
     Card c = a;
+
+    if (info.enchant) {                       // заклинание остаётся заклинанием
+        c.element = info.chain.empty() ? a.element : info.chain.back();
+        c.chain = info.chain;
+        c.power = info.power;
+        c.name = info.name;
+        c.refreshText();
+        c.text = LS(c.text.ru + " Стихия: " + elem(c.element).name.ru + ".",
+                    c.text.en + " Element: " + elem(c.element).name.en + ".");
+        if (c.rarity < CardRarity::Mythic)
+            c.rarity = CardRarity(int(c.rarity) + 1);
+        return c;
+    }
+
     c.tier = info.tier;
     c.chain = info.chain;
     c.power = info.power;

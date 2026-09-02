@@ -1,5 +1,6 @@
 // Overworld / Оверворлд: топ-даун исследование, ресурсы, NPC, руины, события.
 #pragma once
+#include "core/Biome.h"
 #include "core/Cards.h"
 
 namespace shichoy {
@@ -62,6 +63,7 @@ public:
     const WorldEnt& ent(int i) const { return ents_[size_t(i)]; }
     int entCount() const { return int(ents_.size()); }
     float dangerAt(Vector2 p) const;
+    Biome biomeAt(Vector2 p) const;      // биом под точкой — влияет на бой
 
 private:
     Tile at(int x, int y) const;

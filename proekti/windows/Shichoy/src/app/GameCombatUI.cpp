@@ -276,6 +276,7 @@ void Game::drawHandArea() {
 // ── Draw ──────────────────────────────────────────────────────────────────
 void Game::drawCombat() {
     const Enemy& e = combat_.enemy();
+    Vector2 m = GetMousePosition();
     float shake = combat_.screenShake();
     float ox = std::sin(time_ * 47.0f) * shake * 9.0f;
     float oy = std::cos(time_ * 41.0f) * shake * 7.0f;
@@ -407,6 +408,34 @@ void Game::drawCombat() {
         art::text(sb, php.x + php.width + 12, php.y + 3, 15.0f, hex(0x90E0EF));
     }
     drawStatusRow(player_.statuses, php.x, php.y - 30.0f, 17.0f);
+
+    // Место боя и что оно усиливает
+    {
+        const BiomeMod& bm = biomeMod(combat_.biome());
+        char bb[192];
+        snprintf(bb, sizeof bb, g_lang == Lang::Ru ? "Место: %s — %s и %s +%d%%"
+                                                   : "Ground: %s — %s and %s +%d%%",
+                 bm.name.c_str(), elem(bm.a).name.c_str(), elem(bm.b).name.c_str(),
+                 int(bm.bonus * 100));
+        art::text(bb, php.x, php.y - 56.0f, 13.0f, lerpC(bm.tint, WHITE, 0.45f));
+    }
+
+    // Реликвии — по значку в столбик у левого края
+    for (size_t i = 0; i < player_.relics.size(); ++i) {
+        const RelicDef& rd = relicDef(player_.relics[i]);
+        Vector2 p{ 34.0f, 120.0f + i * 30.0f };
+        DrawCircleV(p, 11.0f, Color{ 10, 8, 14, 220 });
+        DrawPolyLinesEx(p, 6, 11.0f, time_ * 12.0f + i * 30.0f, 1.6f, rd.tint);
+        DrawCircleV(p, 4.0f, rd.tint);
+        if (CheckCollisionPointCircle(m, p, 14.0f)) {
+            Rectangle tip{ 54.0f, p.y - 16.0f, 320.0f, 54.0f };
+            DrawRectangleRounded(tip, 0.12f, 6, Color{ 10, 8, 14, 240 });
+            DrawRectangleRoundedLinesEx(tip, 0.12f, 6, 1.2f, rd.tint);
+            art::text(rd.name.c_str(), tip.x + 10, tip.y + 6, 14.0f, rd.tint);
+            art::textWrapped(rd.desc.c_str(), Rectangle{ tip.x + 10, tip.y + 24, 300, 28 },
+                             11.5f, withA(art::pal::Parchment, 230), 1.0f);
+        }
+    }
 
     // Лимит карт
     char cl[96];
