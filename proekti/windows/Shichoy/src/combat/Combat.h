@@ -84,6 +84,8 @@ public:
     float reactionFlash() const { return reactionFlash_; }
     float screenShake() const { return shake_; }
     const LS& telegraph() const { return telegraph_; }
+    float movePlay() const { return movePlay_; }
+    const EnemyMove& playedMove() const { return playedMove_; }
     int depth() const { return depth_; }
 
     void pushFloat(const std::string& s, Vector2 p, Color c, float size = 22.0f);
@@ -132,6 +134,8 @@ private:
     float timer_ = 0.0f;
     float shake_ = 0.0f;
     float reactionFlash_ = 0.0f;
+    float movePlay_ = 0.0f;      // анимация выложенной карты противника
+    EnemyMove playedMove_;
     LS    lastReaction_;
     LS    telegraph_;
 };

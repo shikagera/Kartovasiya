@@ -303,7 +303,8 @@ void Game::drawCombat() {
     ec.x += ox; ec.y += oy;
     float es = 100.0f * enemyScale(sh_);
     if (e.hp > 0)
-        art::drawEnemyBody(ec, enemyScale(sh_), e.seed, e.flavour, time_, e.shake * 6.0f, fl, e.phase);
+        art::drawEnemyBody(ec, enemyScale(sh_), e.seed, e.flavour, time_, e.shake * 6.0f,
+                           fl, e.phase, e.arche);
 
     // Уязвимые точки
     for (int i = 0; i < int(e.spots.size()); ++i) {
@@ -370,13 +371,58 @@ void Game::drawCombat() {
                    32.0f, withA(art::pal::GoldLit, (unsigned char)(255 * combat_.reactionFlash())));
     }
 
-    // Телеграф следующего действия врага
-    {
-        Rectangle tb{ sw_ * 0.5f - 290.0f, sh_ * 0.56f, 580.0f, 34.0f };
-        DrawRectangleRounded(tb, 0.4f, 6, Color{ 10, 8, 14, 200 });
-        DrawRectangleRoundedLinesEx(tb, 0.4f, 6, 1.2f, withA(art::pal::Blood, 170));
-        art::textC(combat_.telegraph().c_str(), tb.x + tb.width * 0.5f, tb.y + 9.0f, 15.0f,
-                   withA(art::pal::Parchment, 235));
+    // ── Карты противника ──────────────────────────────────────────────────
+    // Он тоже играет со стола, но своей колодой: костяные пластины вместо
+    // Таро. Ближайшая открыта, остальные лежат рубашкой вверх.
+    if (!e.phases.empty()) {
+        const EnemyPhase& ph = e.phases[size_t(clampi(e.phase, 0, int(e.phases.size()) - 1))];
+        int pn = int(ph.moves.size());
+        if (pn > 0) {
+            float cw = 66.0f, ch = 92.0f, gap = 8.0f;
+            float total = pn * cw + (pn - 1) * gap;
+            float x0 = sw_ * 0.5f - total * 0.5f;
+            float y = sh_ * 0.545f;
+
+            char hdr[160];
+            snprintf(hdr, sizeof hdr, g_lang == Lang::Ru ? "%s выкладывает свои карты%s"
+                                                         : "%s lays out its own cards%s",
+                     archetypeName(e.arche).c_str(),
+                     e.actions > 1 ? (g_lang == Lang::Ru ? "  — по две за ход" : "  — two per turn")
+                                   : "");
+            art::textC(hdr, sw_ * 0.5f, y - 20.0f, 13.0f, withA(art::pal::Blood, 220));
+
+            for (int i = 0; i < pn; ++i) {
+                const EnemyMove& mv = ph.moves[size_t(i)];
+                bool dead = mv.spotIndex >= 0 && mv.spotIndex < int(e.spots.size())
+                         && e.spots[size_t(mv.spotIndex)].destroyed;
+                bool active = (i == e.moveIndex) && !dead;
+                Rectangle r{ x0 + i * (cw + gap), y, cw, ch };
+                if (active) r.y -= 10.0f;
+                // Открыт только ближайший приём — остальные рубашкой вверх.
+                art::drawEnemyCard(mv, r, time_, fl, active, !active && !dead, dead);
+
+                if (CheckCollisionPointRec(m, r) && !dead) {
+                    Rectangle tip{ clampf(r.x - 90.0f, 8.0f, sw_ - 300.0f), r.y - 54.0f, 292.0f, 48.0f };
+                    DrawRectangleRounded(tip, 0.12f, 6, Color{ 10, 8, 14, 240 });
+                    DrawRectangleRoundedLinesEx(tip, 0.12f, 6, 1.2f, art::pal::Blood);
+                    art::text(mv.name.c_str(), tip.x + 10, tip.y + 6, 14.0f, art::pal::Parchment);
+                    art::text(mv.telegraph.c_str(), tip.x + 10, tip.y + 26, 12.0f,
+                              withA(art::pal::Vellum, 220));
+                }
+            }
+
+            // Выложенная карта уезжает через стол к игроку.
+            if (combat_.movePlay() > 0.01f) {
+                float k = 1.0f - combat_.movePlay();
+                float bw = cw * 1.7f, bh = ch * 1.7f;
+                Rectangle r{ sw_ * 0.5f - bw * 0.5f, y - 6.0f + k * 130.0f, bw, bh };
+                unsigned char a = (unsigned char)(255 * clampf(combat_.movePlay() * 1.6f, 0.0f, 1.0f));
+                BeginBlendMode(BLEND_ALPHA);
+                art::drawEnemyCard(combat_.playedMove(), r, time_, fl, true, false, false);
+                DrawRectangleRounded(r, 0.05f, 4, Color{ 8, 6, 12, (unsigned char)(255 - a) });
+                EndBlendMode();
+            }
+        }
     }
 
     // ── стол на переднем плане ────────────────────────────────────────────

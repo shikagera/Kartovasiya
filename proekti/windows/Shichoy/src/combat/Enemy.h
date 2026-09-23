@@ -4,6 +4,19 @@
 
 namespace shichoy {
 
+// Кто именно сидит по ту сторону стола — определяет и облик, и повадки.
+enum class Archetype : int {
+    Reaper = 0,    // жнец: рваный плащ и череп
+    Candelabrum,   // канделябр: подсвечник с живым пламенем
+    Portrait,      // портрет: фигура лезет из рамы
+    Hound,         // егерь: четвероногое, быстрое
+    Automaton,     // автоматон: латунь и шестерни
+    Choir,         // хор: столб из поющих ртов
+    Doll,          // восковая кукла: швы и трещины
+    COUNT
+};
+LS archetypeName(Archetype a);
+
 enum class MoveKind : int {
     Attack = 0,   // обычный удар
     Heavy,        // тяжёлый удар (медленный, больно)
@@ -58,6 +71,7 @@ struct Enemy {
     int depth = 1;
     uint32_t seed = 1;
     ElementId flavour = ElementId::Shadow;
+    Archetype arche = Archetype::Reaper;
     bool boss = false;
 
     std::vector<EnemyPhase> phases;

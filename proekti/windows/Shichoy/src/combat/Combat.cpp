@@ -603,6 +603,9 @@ void Combat::runEnemyTurn() {
     } else for (int act = 0; act < std::max(1, enemy_.actions) && player_->alive() && enemy_.alive(); ++act) {
         const EnemyMove* m = enemy_.currentMove();
         if (!m) break;
+        playedMove_ = *m;
+        movePlay_ = 1.0f;
+        audio::playEnemyMove(int(m->kind), enemy_.flavour, 0.9f);
         int dmg = m->damage + enemy_.enrage;
         switch (m->kind) {
             case MoveKind::Guard:
@@ -737,6 +740,7 @@ void Combat::onVictory() {
 void Combat::update(float dt) {
     shake_ = std::max(0.0f, shake_ - dt * 2.4f);
     reactionFlash_ = std::max(0.0f, reactionFlash_ - dt * 1.6f);
+    movePlay_ = std::max(0.0f, movePlay_ - dt * 0.75f);
     enemy_.shake = std::max(0.0f, enemy_.shake - dt * 2.0f);
     for (auto& s : enemy_.spots) s.flash = std::max(0.0f, s.flash - dt * 2.5f);
 

@@ -2,6 +2,7 @@
 // Всё рисуется примитивами raylib: рамки Таро, сигилы, персонаж, враги, фон.
 #pragma once
 #include "core/Merge.h"
+#include "combat/Enemy.h"
 
 namespace shichoy {
 namespace art {
@@ -66,8 +67,13 @@ void drawAristocratTopDown(Vector2 pos, float scale, int facing, float walkPhase
 void drawAristocratSide(Vector2 pos, float scale, float t, float tablePull);
 
 // Силуэт врага для боевой сцены (вид от первого лица).
+// Семь обликов: у каждого свой силуэт и свои повадки.
 void drawEnemyBody(Vector2 center, float scale, uint32_t seed, ElementId flavour,
-                   float t, float shake, Color tint, int phase);
+                   float t, float shake, Color tint, int phase, Archetype arche);
+
+// Карта противника — грубая, костяная, ничего общего с Таро игрока.
+void drawEnemyCard(const EnemyMove& m, Rectangle r, float t, Color flavour,
+                   bool active, bool faceDown, bool dead);
 
 } // namespace art
 } // namespace shichoy

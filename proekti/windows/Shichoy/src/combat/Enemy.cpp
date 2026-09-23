@@ -73,6 +73,108 @@ void Enemy::removeStatus(StatusId s) {
 // ── Generation / Генерация противника ─────────────────────────────────────
 static LS mv(const char* ru, const char* en) { return LS(ru, en); }
 
+LS archetypeName(Archetype a) {
+    switch (a) {
+        case Archetype::Reaper:      return LS("Жнец", "Reaper");
+        case Archetype::Candelabrum: return LS("Канделябр", "Candelabrum");
+        case Archetype::Portrait:    return LS("Портрет", "Portrait");
+        case Archetype::Hound:       return LS("Егерь", "Huntsman");
+        case Archetype::Automaton:   return LS("Автоматон", "Automaton");
+        case Archetype::Choir:       return LS("Хор", "Choir");
+        case Archetype::Doll:        return LS("Кукла", "Doll");
+        default:                     return LS("Нечто", "Something");
+    }
+}
+
+// Каждый облик тянет к своим приёмам — повадки читаются по силуэту.
+static MoveKind archeMove(Archetype a, Rng& r) {
+    switch (a) {
+        case Archetype::Candelabrum: {
+            static const MoveKind p[] = { MoveKind::Curse, MoveKind::Multi, MoveKind::Attack,
+                                          MoveKind::Enrage, MoveKind::Curse };
+            return p[r.i(0, 4)];
+        }
+        case Archetype::Portrait: {
+            static const MoveKind p[] = { MoveKind::Curse, MoveKind::Guard, MoveKind::Mend,
+                                          MoveKind::Curse, MoveKind::Attack };
+            return p[r.i(0, 4)];
+        }
+        case Archetype::Hound: {
+            static const MoveKind p[] = { MoveKind::Multi, MoveKind::Attack, MoveKind::Multi,
+                                          MoveKind::Attack, MoveKind::Heavy };
+            return p[r.i(0, 4)];
+        }
+        case Archetype::Automaton: {
+            static const MoveKind p[] = { MoveKind::Guard, MoveKind::Sunder, MoveKind::Heavy,
+                                          MoveKind::Attack, MoveKind::Guard };
+            return p[r.i(0, 4)];
+        }
+        case Archetype::Choir: {
+            static const MoveKind p[] = { MoveKind::Curse, MoveKind::Enrage, MoveKind::Multi,
+                                          MoveKind::Curse, MoveKind::Heavy };
+            return p[r.i(0, 4)];
+        }
+        case Archetype::Doll: {
+            static const MoveKind p[] = { MoveKind::Mend, MoveKind::Guard, MoveKind::Enrage,
+                                          MoveKind::Attack, MoveKind::Curse };
+            return p[r.i(0, 4)];
+        }
+        default: {
+            static const MoveKind p[] = { MoveKind::Attack, MoveKind::Heavy, MoveKind::Multi,
+                                          MoveKind::Curse, MoveKind::Sunder, MoveKind::Guard,
+                                          MoveKind::Mend, MoveKind::Enrage };
+            return p[r.i(0, 7)];
+        }
+    }
+}
+
+// Названия приёмов подгоняются под облик — «Удар тростью» у пса ни к чему.
+static void flavourMove(EnemyMove& m, Archetype a) {
+    switch (a) {
+        case Archetype::Candelabrum:
+            if (m.kind == MoveKind::Attack) { m.name = mv("Капля воска", "Drop of Wax");
+                                              m.telegraph = mv("наклоняет пламя", "tips its flame"); }
+            if (m.kind == MoveKind::Multi)  { m.name = mv("Град искр", "Hail of Sparks");
+                                              m.telegraph = mv("разгорается", "flares up"); }
+            break;
+        case Archetype::Portrait:
+            if (m.kind == MoveKind::Attack) { m.name = mv("Мазок кистью", "Brushstroke");
+                                              m.telegraph = mv("тянется из рамы", "leans out of the frame"); }
+            if (m.kind == MoveKind::Guard)  { m.name = mv("Слой лака", "Coat of Varnish");
+                                              m.telegraph = mv("покрывается лаком", "glazes over"); }
+            break;
+        case Archetype::Hound:
+            if (m.kind == MoveKind::Attack) { m.name = mv("Хватка", "Snap");
+                                              m.telegraph = mv("прижимается к земле", "crouches low"); }
+            if (m.kind == MoveKind::Multi)  { m.name = mv("Свора", "The Pack");
+                                              m.telegraph = mv("заходит кругом", "circles in"); }
+            if (m.kind == MoveKind::Heavy)  { m.name = mv("Загон", "Run to Ground");
+                                              m.telegraph = mv("берёт разгон", "gathers speed"); }
+            break;
+        case Archetype::Automaton:
+            if (m.kind == MoveKind::Attack) { m.name = mv("Шатунный удар", "Piston Blow");
+                                              m.telegraph = mv("заводит механизм", "winds its works"); }
+            if (m.kind == MoveKind::Guard)  { m.name = mv("Латунный кожух", "Brass Casing");
+                                              m.telegraph = mv("смыкает пластины", "closes its plates"); }
+            if (m.kind == MoveKind::Sunder) { m.name = mv("Клещи", "The Pincers");
+                                              m.telegraph = mv("разводит клещи", "spreads its pincers"); }
+            break;
+        case Archetype::Choir:
+            if (m.kind == MoveKind::Curse)  { m.name = mv("Литания", "Litany");
+                                              m.telegraph = mv("набирает воздух", "draws breath"); }
+            if (m.kind == MoveKind::Multi)  { m.name = mv("Многоголосье", "Many Voices");
+                                              m.telegraph = mv("рты открываются разом", "every mouth opens"); }
+            break;
+        case Archetype::Doll:
+            if (m.kind == MoveKind::Mend)   { m.name = mv("Новый стежок", "A Fresh Stitch");
+                                              m.telegraph = mv("зашивает шов", "sews a seam"); }
+            if (m.kind == MoveKind::Attack) { m.name = mv("Фарфоровая ладонь", "Porcelain Palm");
+                                              m.telegraph = mv("поднимает руку", "raises a hand"); }
+            break;
+        default: break;
+    }
+}
+
 static EnemyMove makeMove(Rng& r, int depth, MoveKind k, ElementId fl) {
     EnemyMove m;
     m.kind = k;
@@ -164,13 +266,25 @@ Enemy genEnemy(Rng& r, int depth, bool boss) {
     const LS& pre = r.pick(enemyPrefixes());
     const LS& noun = r.pick(enemyNouns());
     e.name = LS(std::string(pre.ru) + " " + noun.ru, std::string(pre.en) + " " + noun.en);
+    e.arche = Archetype(r.i(0, int(Archetype::COUNT) - 1));
     e.epithet = boss ? LS("хозяин руин", "master of the ruin")
-                     : LS(elem(e.flavour).name.ru, elem(e.flavour).name.en);
+                     : LS(std::string(archetypeName(e.arche).ru) + ", " + elem(e.flavour).name.ru,
+                          std::string(archetypeName(e.arche).en) + ", " + elem(e.flavour).name.en);
 
     float hpBase = boss ? (150.0f + depth * 46.0f) : (55.0f + depth * 24.0f);
+    // Облик правит телосложение: пёс лёгкий и быстрый, автоматон — наоборот.
+    switch (e.arche) {
+        case Archetype::Hound:     hpBase *= 0.80f; break;
+        case Archetype::Automaton: hpBase *= 1.25f; break;
+        case Archetype::Doll:      hpBase *= 1.10f; break;
+        case Archetype::Choir:     hpBase *= 0.92f; break;
+        default: break;
+    }
     e.maxHp = int(hpBase * r.f(0.9f, 1.15f));
     e.hp = e.maxHp;
     e.actions = clampi(1 + depth / 6, 1, 3) + (boss ? 1 : 0);
+    if (e.arche == Archetype::Hound) e.actions++;              // пёс бьёт чаще
+    if (e.arche == Archetype::Automaton) e.guard += 4 + depth; // и сразу в броне
 
     int spotCount = boss ? r.i(2, 3) : (depth >= 2 ? r.i(1, 2) : r.i(0, 1));
     for (int i = 0; i < spotCount; ++i) e.spots.push_back(makeSpot(r, depth, i, boss));
@@ -187,14 +301,12 @@ Enemy genEnemy(Rng& r, int depth, bool boss) {
             MoveKind k;
             if (i == 0) k = MoveKind::Attack;
             else {
-                static const MoveKind pool[] = { MoveKind::Attack, MoveKind::Heavy, MoveKind::Multi,
-                                                 MoveKind::Curse, MoveKind::Guard, MoveKind::Mend,
-                                                 MoveKind::Enrage, MoveKind::Sunder };
-                k = pool[size_t(r.i(0, 7))];
-                if ((k == MoveKind::Mend || k == MoveKind::Enrage) && !boss && r.chance(0.5f))
+                k = archeMove(e.arche, r);
+                if ((k == MoveKind::Mend || k == MoveKind::Enrage) && !boss && r.chance(0.4f))
                     k = MoveKind::Attack;
             }
             EnemyMove m = makeMove(r, depth + p, k, e.flavour);
+            flavourMove(m, e.arche);
             m.damage = int(m.damage * (1.0f + 0.18f * p));
             // Привязываем часть приёмов к уязвимым точкам.
             if (!e.spots.empty() && r.chance(0.5f)) {

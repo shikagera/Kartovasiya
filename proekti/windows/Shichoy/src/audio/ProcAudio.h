@@ -45,6 +45,9 @@ bool ready();
 
 void play(Sfx s, float volume = 1.0f, float pitch = 1.0f);
 void playElement(ElementId e, float volume = 1.0f);   // звук стихии карты
+// Голос приёма противника: тембр приёма плюс его стихия, взятая ниже.
+// moveKind — индекс MoveKind (0..7), чтобы не тянуть боевой заголовок в звук.
+void playEnemyMove(int moveKind, ElementId flavour, float volume = 1.0f);
 void setTrack(Track t);
 void update(float dt);                                 // плавные переходы громкости
 

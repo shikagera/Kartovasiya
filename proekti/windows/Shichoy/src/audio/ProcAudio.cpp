@@ -170,6 +170,7 @@ static float s_master = 0.75f;
 
 static Slot s_sfx[int(Sfx::COUNT)];
 static Slot s_elem[ELEMENT_COUNT + 1];
+static Slot s_enemy[8];        // по одному голосу на вид приёма
 
 // ── Рецепты стихий / Element recipes ──────────────────────────────────────
 // Каждая стихия — свой набор ручек. Молния: мгновенная атака, резкий треск
@@ -193,6 +194,22 @@ static const Voice kVoices[ELEMENT_COUNT + 1] = {
     /* Storm     */ { 1.15f, 1700,   270,  3, 0.40f,0.26f,0.92f,4200,  620, 3.0f, 0.002f,0.31f,0.62f,0.62f,40,0.62f, 0,  0.0f },
     /* Crystal   */ { 1.20f, 2150,  2120,  6, 0.90f,0.40f,0.10f,6000, 4000, 6.0f, 0.001f,0.62f,0.05f,0.0f, 60,0.10f, 0,  0.0f },
     /* Arcane    */ { 1.00f,  310,   640,  5, 0.55f,0.34f,0.26f,1500, 3100, 3.0f, 0.020f,0.46f,0.15f,0.20f,44,0.34f, 6,  0.35f },
+};
+
+// ── Голоса приёмов противника ─────────────────────────────────────────────
+// Порядок совпадает с MoveKind: удар, тяжёлый, серия, проклятие, защита,
+// штопка, ярость, раскол. Все ниже и грубее игроцких — по ту сторону стола
+// сидит не человек.
+static const Voice kEnemyVoices[8] = {
+    //          dur   f0    f1   part inh  tone  nz   fc0   fc1   q    atk    dec  crk  sub  subF subDec wob wobD
+    /* Attack */ { 0.45f, 150,   80, 3, 0.30f,0.40f,0.55f,1400,  380, 1.6f, 0.001f,0.14f,0.45f,0.45f,44,0.20f, 0, 0.0f },
+    /* Heavy  */ { 1.00f,  95,   42, 3, 0.25f,0.50f,0.60f, 800,  180, 1.4f, 0.002f,0.30f,0.55f,0.85f,32,0.70f, 0, 0.0f },
+    /* Multi  */ { 0.60f, 260,  150, 2, 0.45f,0.26f,0.85f,2600,  700, 3.4f, 0.001f,0.16f,0.90f,0.25f,50,0.22f, 0, 0.0f },
+    /* Curse  */ { 1.20f, 190,   62, 4, 0.55f,0.30f,0.62f, 900,  200, 2.4f, 0.110f,0.55f,0.30f,0.55f,34,0.62f, 4, 0.28f },
+    /* Guard  */ { 0.70f, 520,  480, 5, 1.00f,0.44f,0.25f,3000, 1600, 3.0f, 0.001f,0.30f,0.15f,0.20f,60,0.18f, 0, 0.0f },
+    /* Mend   */ { 0.80f, 300,  190, 2, 0.20f,0.28f,0.55f, 700,  240, 3.6f, 0.020f,0.34f,0.40f,0.25f,46,0.26f, 9, 0.35f },
+    /* Enrage */ { 1.10f,  90,  230, 4, 0.40f,0.44f,0.55f, 500, 1800, 2.2f, 0.060f,0.50f,0.45f,0.60f,38,0.55f, 5, 0.15f },
+    /* Sunder */ { 0.85f, 900,  180, 5, 0.85f,0.38f,0.80f,4200,  600, 3.6f, 0.001f,0.24f,0.75f,0.50f,40,0.36f, 0, 0.0f },
 };
 
 // ── Эффекты интерфейса и боя ──────────────────────────────────────────────
@@ -474,6 +491,10 @@ void init() {
         rnd.st = 0x1B873593u + uint32_t(e) * 374761393u;
         s_elem[e].load(renderVoice(kVoices[e], rnd));
     }
+    for (int k = 0; k < 8; ++k) {
+        rnd.st = 0x27D4EB2Fu + uint32_t(k) * 2654435761u;
+        s_enemy[k].load(renderVoice(kEnemyVoices[k], rnd));
+    }
 
     SetAudioStreamBufferSizeDefault(2048);
     s_music.stream = LoadAudioStream(SR, 16, 1);
@@ -494,6 +515,7 @@ void shutdown() {
     }
     for (auto& s : s_sfx) s.unload();
     for (auto& s : s_elem) s.unload();
+    for (auto& s : s_enemy) s.unload();
     CloseAudioDevice();
     s_ready = false;
 }
@@ -624,6 +646,31 @@ void debugDump(const char* outDir) {
         writeWav(outDir, tr.name, d);
     }
     s_music = MusicState{};
+}
+
+} // namespace audio
+} // namespace shichoy
+
+namespace shichoy {
+namespace audio {
+
+void playEnemyMove(int moveKind, ElementId flavour, float volume) {
+    if (!s_ready || s_muted) return;
+    int k = clampi(moveKind, 0, 7);
+    if (s_enemy[k].loaded) {
+        Sound& s = s_enemy[k].pick();
+        SetSoundVolume(s, clampf(volume, 0.0f, 1.0f));
+        SetSoundPitch(s, 0.92f + 0.10f * ((k % 3) - 1));
+        PlaySound(s);
+    }
+    // Стихия врага подмешивается ниже и тише — это его окраска, не удар.
+    int e = eidx(flavour);
+    if (e > 0 && e <= ELEMENT_COUNT && s_elem[e].loaded) {
+        Sound& s = s_elem[e].pick();
+        SetSoundVolume(s, clampf(volume * 0.45f, 0.0f, 1.0f));
+        SetSoundPitch(s, 0.62f);
+        PlaySound(s);
+    }
 }
 
 } // namespace audio
