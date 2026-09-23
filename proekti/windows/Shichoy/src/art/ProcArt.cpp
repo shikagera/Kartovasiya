@@ -479,13 +479,16 @@ void drawAristocratSide(Vector2 pos, float s, float t, float tablePull) {
 
 // Объёмное пятно: концентрические эллипсы от тёмного к светлому со сдвигом
 // вверх — получается шар, а не блин.
-static void volumeEllipse(Vector2 c, float rx, float ry, Color deep, Color lit, int layers = 7) {
+void blob(Vector2 c, float rx, float ry, Color deep, Color lit, int layers) {
     for (int i = layers - 1; i >= 0; --i) {
         float k = float(i) / float(layers - 1);          // 1 снаружи … 0 в центре
-        float sx = rx * (0.52f + 0.48f * k);
-        float sy = ry * (0.52f + 0.48f * k);
-        DrawEllipse(int(c.x), int(c.y + ry * 0.20f * k), int(sx), int(sy), lerpC(lit, deep, k));
+        DrawEllipse(int(c.x), int(c.y + ry * 0.20f * k),
+                    int(rx * (0.52f + 0.48f * k)), int(ry * (0.52f + 0.48f * k)),
+                    lerpC(lit, deep, k));
     }
+}
+static void volumeEllipse(Vector2 c, float rx, float ry, Color deep, Color lit, int layers = 7) {
+    blob(c, rx, ry, deep, lit, layers);
 }
 
 // То же для многоугольника: форму рисуем несколько раз, поджимая к центру.
@@ -519,7 +522,7 @@ static void rimLight(const Vector2* pts, int n, Vector2 c, Color rim, float w) {
 }
 
 // Фактура: мелкие точки и штрихи по форме, чтобы поверхность не была пустой.
-static void speckle(Vector2 c, float rx, float ry, uint32_t seed, Color col, int count) {
+void grit(Vector2 c, float rx, float ry, uint32_t seed, Color col, int count) {
     for (int i = 0; i < count; ++i) {
         float a = hash01(i, 1, seed) * 6.2832f;
         float r = std::sqrt(hash01(i, 2, seed));
@@ -528,6 +531,9 @@ static void speckle(Vector2 c, float rx, float ry, uint32_t seed, Color col, int
         float sz = 0.6f + hash01(i, 3, seed) * 1.5f;
         DrawCircleV(Vector2{ x, y }, sz, withA(col, (unsigned char)(40 + 60 * hash01(i, 4, seed))));
     }
+}
+static void speckle(Vector2 c, float rx, float ry, uint32_t seed, Color col, int count) {
+    grit(c, rx, ry, seed, col, count);
 }
 
 // Складки ткани: линии, сходящиеся к точке подвеса.

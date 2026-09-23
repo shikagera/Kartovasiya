@@ -40,6 +40,14 @@ struct LogLine {
     float age = 0.0f;
 };
 
+// Событие для экранного эффекта: какая стихия сыграла и в каком цвете.
+struct FxEvent {
+    ElementId a = ElementId::None, b = ElementId::None;
+    Color tint = WHITE;
+    float power = 1.0f;
+    bool  reaction = false;
+};
+
 struct CombatRewards {
     int materials[MATERIAL_COUNT] = { 0 };
     std::vector<Card> cardChoices;
@@ -88,10 +96,14 @@ public:
     const EnemyMove& playedMove() const { return playedMove_; }
     int depth() const { return depth_; }
 
+    const std::vector<FxEvent>& fxEvents() const { return fxEvents_; }
+    void clearFxEvents() { fxEvents_.clear(); }
+
     void pushFloat(const std::string& s, Vector2 p, Color c, float size = 22.0f);
     void pushLog(const LS& t, Color c);
 
 private:
+    void pushFx(ElementId a, ElementId b, Color tint, float power, bool reaction);
     void drawHand(int n);
     void discardHand();
     void startPlayerTurn();
@@ -117,6 +129,7 @@ private:
     std::vector<Card> hand_;
     std::vector<LogLine> log_;
     std::vector<FloatText> floats_;
+    std::vector<FxEvent> fxEvents_;
     CombatRewards rewards_;
 
     CombatState state_ = CombatState::PlayerTurn;

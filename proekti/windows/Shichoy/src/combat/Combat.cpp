@@ -39,6 +39,10 @@ void Combat::pushFloat(const std::string& s, Vector2 p, Color c, float size) {
     f.s = s; f.pos = p; f.color = c; f.maxLife = 1.1f; f.life = f.maxLife; f.size = size;
     floats_.push_back(f);
 }
+void Combat::pushFx(ElementId a, ElementId b, Color tint, float power, bool reaction) {
+    fxEvents_.push_back(FxEvent{ a, b, tint, power, reaction });
+}
+
 void Combat::pushLog(const LS& t, Color c) {
     log_.push_back(LogLine{ t, c, 0.0f });
     if (log_.size() > 40) log_.erase(log_.begin());
@@ -255,6 +259,7 @@ void Combat::applyReaction(const ReactionDef& rc, const Card& card) {
     int dmg = int((card.power * rc.mult + rc.bonus) * amp);
     lastReaction_ = rc.name;
     reactionFlash_ = 1.0f;
+    pushFx(rc.a, rc.b, rc.tint, 1.5f, true);
     // Реакция звучит поверх голоса стихии: чем сильнее, тем ниже удар.
     audio::play(audio::Sfx::Reaction, 1.0f, clampf(1.25f - rc.mult * 0.28f, 0.6f, 1.3f));
     pushLog(LS(std::string("Реакция: ") + rc.name.ru + " — " + rc.desc.ru,
@@ -300,12 +305,16 @@ void Combat::resolveCompound(const Card& c) {
     lastReaction_ = c.name;
     reactionFlash_ = 1.0f;
     shake_ = std::max(shake_, 0.6f + rank * 0.12f);
-    audio::play(audio::Sfx::Reaction, 1.0f, clampf(1.25f - rank * 0.14f, 0.55f, 1.25f));
-    if (!c.chain.empty()) audio::playElement(c.chain.front(), 0.75f);
 
     Color tint = c.chain.size() >= 2
         ? lerpC(elem(c.chain[0]).primary, elem(c.chain[1]).primary, 0.5f)
         : c.tint();
+
+    pushFx(c.chain.empty() ? c.element : c.chain[0],
+           c.chain.size() > 1 ? c.chain[1] : ElementId::None,
+           tint, 1.2f + rank * 0.45f, true);
+    audio::play(audio::Sfx::Reaction, 1.0f, clampf(1.25f - rank * 0.14f, 0.55f, 1.25f));
+    if (!c.chain.empty()) audio::playElement(c.chain.front(), 0.75f);
 
     pushLog(LS(std::string("[") + tierLabel(c.tier) + "] " + c.name.ru + " — урон x"
                    + num(int(mult)) + (mult - int(mult) > 0.01f ? ".5" : ""),
@@ -370,6 +379,7 @@ void Combat::resolveElement(const Card& c) {
     mark_ = e;
     markTurns_ = 3;
     dealDamageToEnemy(int(c.power * amp), has(c.flags, CardFlags::Precise), elem(e).primary);
+    pushFx(e, ElementId::None, elem(e).primary, 1.0f, false);
     enemy_.addStatus(elem(e).mark, 1 + depth_ / 4, 2);
     pushLog(LS(std::string("Метка: ") + elem(e).name.ru, std::string("Mark: ") + elem(e).name.en),
             elem(e).primary);
@@ -377,6 +387,9 @@ void Combat::resolveElement(const Card& c) {
 
 void Combat::resolveSpell(const Card& c) {
     float amp = (1.0f + ampBonus_) * biomeMul(c);
+    if (c.element != ElementId::None)
+        pushFx(c.element, c.chain.size() > 1 ? c.chain[1] : ElementId::None,
+               elem(c.element).primary, 1.0f, false);
     bool precise = has(c.flags, CardFlags::Precise);
     Color col = c.tint();
 

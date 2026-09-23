@@ -760,7 +760,7 @@ void Game::openCraft() {
 }
 
 Rectangle Game::craftPlayArea() const {
-    return Rectangle{ 40.0f, 386.0f, sw_ - 80.0f, sh_ - 446.0f };
+    return Rectangle{ 44.0f, 414.0f, sw_ - 88.0f, sh_ - 476.0f };
 }
 
 void Game::updateCraft(float dt) {

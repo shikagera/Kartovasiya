@@ -55,6 +55,9 @@ void drawSigil(ElementId e, Vector2 c, float radius, Color col, float t);
 void drawRuneRing(Vector2 c, float radius, int count, Color col, float t);
 void drawVignette(int w, int h, float strength);
 void drawStarfield(int w, int h, float t, uint32_t seed);
+// Объёмное пятно и фактура — общие кирпичи светотени для всей игры.
+void blob(Vector2 c, float rx, float ry, Color deep, Color lit, int layers = 6);
+void grit(Vector2 c, float rx, float ry, uint32_t seed, Color col, int count);
 
 // ── Cards / Карты ─────────────────────────────────────────────────────────
 void drawCard(const Card& card, Rectangle r, float hover, bool selected, float t,

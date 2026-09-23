@@ -79,6 +79,7 @@ private:
     void carvePath(Rng& r, int x0, int y0, int x1, int y1);
     void placeEntities(Rng& r);
     void drawTile(int x, int y, float time) const;
+    Color groundColor(int x, int y, float time) const;
 
     std::vector<Tile> map_;
     std::vector<WorldEnt> ents_;

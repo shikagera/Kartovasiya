@@ -16,6 +16,12 @@ static float   enemyScale(int sh) { return sh / 720.0f * 1.30f; }
 void Game::updateCombat(float dt) {
     combat_.update(dt);
 
+    // Забираем события боя и превращаем их в экранные эффекты.
+    for (const auto& ev : combat_.fxEvents())
+        fx_.trigger(ev.a, ev.b, ev.tint, ev.power, ev.reaction);
+    combat_.clearFxEvents();
+    fx_.update(dt);
+
     const Enemy& e = combat_.enemy();
     Vector2 ec = enemyCenter(sw_, sh_);
     float es = 100.0f * enemyScale(sh_);
@@ -538,6 +544,9 @@ void Game::drawCombat() {
     // Рука
     drawHandArea();
 
+    // Экранные эффекты сыгранной карты — поверх всего, по краям кадра
+    fx_.draw(sw_, sh_, time_);
+
     // Всплывающие числа
     for (const auto& f : combat_.floats()) {
         float a = clampf(f.life / f.maxLife, 0.0f, 1.0f);
@@ -682,6 +691,21 @@ void Game::debugForceScene(int which) {
         }
         default:
             // 8..15 — по одной мини-игре на кадр
+            // 30..45 — экранный эффект чистой стихии, 50 — реакция Тёмный огонь
+            if (which >= 30) {
+                startRun();
+                Enemy e = genEnemy(rng_, 5, false);
+                combat_.begin(&deck_, &player_, std::move(e), 5, &rng_);
+                scene_ = Scene::Combat;
+                if (which == 50) {
+                    ReactionDef rc = reactionFor(ElementId::Fire, ElementId::Shadow);
+                    fx_.trigger(ElementId::Fire, ElementId::Shadow, rc.tint, 1.5f, true);
+                } else {
+                    ElementId el = ElementId(clampi(which - 29, 1, ELEMENT_COUNT));
+                    fx_.trigger(el, ElementId::None, elem(el).primary, 1.0f, false);
+                }
+                break;
+            }
             if (which >= 20 && which < 20 + int(Archetype::COUNT)) {
                 startRun();
                 Enemy e = genEnemy(rng_, 6, false);

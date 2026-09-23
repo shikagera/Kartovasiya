@@ -3,6 +3,7 @@
 #include "world/Overworld.h"
 #include "combat/Combat.h"
 #include "craft/Craft.h"
+#include "art/Vfx.h"
 #include "core/Save.h"
 
 namespace shichoy {
@@ -106,6 +107,7 @@ private:
     Inventory inv_;
     Combat combat_;
     MiniGame mini_;
+    art::ScreenFx fx_;
 
     int   depth_ = 1;
     int   pendingEnt_ = -1;

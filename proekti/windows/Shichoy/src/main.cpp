@@ -163,8 +163,14 @@ int main(int argc, char** argv) {
                                 "mg_candles.png", "mg_reflex.png", "mg_sequence.png", "mg_cipher.png",
                                 "", "", "", "",
                                 "en_reaper.png", "en_candelabrum.png", "en_portrait.png",
-                                "en_hound.png", "en_automaton.png", "en_choir.png", "en_doll.png" };
-        for (int s = 0; s < 27; ++s) {
+                                "en_hound.png", "en_automaton.png", "en_choir.png", "en_doll.png",
+                                "", "", "",
+                                "fx_fire.png", "fx_water.png", "", "", "fx_lightning.png",
+                                "fx_ice.png", "", "fx_shadow.png", "", "fx_light.png",
+                                "", "", "fx_blood.png", "", "fx_crystal.png", "fx_arcane.png",
+                                "", "", "", "", "fx_darkfire.png" };
+        const int nameCount = int(sizeof(names) / sizeof(names[0]));
+        for (int s = 0; s < nameCount; ++s) {
             if (names[s][0] == 0) continue;
             game.debugForceScene(s);
             for (int f = 0; f < 25; ++f) game.frame();

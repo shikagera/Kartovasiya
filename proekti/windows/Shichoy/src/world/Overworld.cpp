@@ -301,97 +301,224 @@ void Overworld::update(float dt, bool inputEnabled) {
 }
 
 // ── Drawing ───────────────────────────────────────────────────────────────
+// ── Земля / Ground ────────────────────────────────────────────────────────
+// Раньше каждый тайл был плоским квадратом одного цвета — отсюда шахматка.
+// Теперь цвет тайла смешивается с соседями, поверх ложится низкочастотный
+// свет, а детали (трава, камешки, корни, кости) раскиданы независимо от
+// сетки, так что границы клеток не читаются.
+
 static Color tileBase(Tile t) {
     switch (t) {
-        case Tile::Grass:     return hex(0x24352A);
-        case Tile::DarkGrass: return hex(0x18241D);
-        case Tile::Path:      return hex(0x3A3227);
-        case Tile::Mud:       return hex(0x2A2318);
-        case Tile::Water:     return hex(0x101C2A);
-        case Tile::Rock:      return hex(0x2B2B33);
-        case Tile::Tree:      return hex(0x121C15);
-        case Tile::Bramble:   return hex(0x1B1A14);
-        case Tile::Grave:     return hex(0x22252A);
-        case Tile::Flagstone: return hex(0x33333C);
+        case Tile::Grass:     return hex(0x2C4232);
+        case Tile::DarkGrass: return hex(0x1B2A20);
+        case Tile::Path:      return hex(0x453A2C);
+        case Tile::Mud:       return hex(0x33291B);
+        case Tile::Water:     return hex(0x122036);
+        case Tile::Rock:      return hex(0x33333D);
+        case Tile::Tree:      return hex(0x18271C);
+        case Tile::Bramble:   return hex(0x22201A);
+        case Tile::Grave:     return hex(0x272A31);
+        case Tile::Flagstone: return hex(0x3A3A44);
         default:              return hex(0x1A1A1A);
     }
+}
+
+// Цвет земли в точке: среднее по соседним тайлам, чтобы стык был мягким.
+Color Overworld::groundColor(int x, int y, float time) const {
+    Color c = tileBase(at(x, y));
+    // Смешиваем с четырьмя соседями — граница размывается на полклетки.
+    int nx[4] = { x - 1, x + 1, x, x };
+    int ny[4] = { y, y, y - 1, y + 1 };
+    for (int i = 0; i < 4; ++i) c = lerpC(c, tileBase(at(nx[i], ny[i])), 0.12f);
+
+    // Крупный свет: облачная тень медленно ползёт по земле.
+    float cloud = fbm(x * 0.045f + time * 0.06f, y * 0.045f, seed_ + 31u, 3);
+    float lightK = 0.92f + 0.34f * fbm(x * 0.11f, y * 0.11f, seed_ + 5u, 3);
+    lightK *= (0.90f + 0.22f * cloud);
+    return scaleC(c, lightK);
 }
 
 void Overworld::drawTile(int x, int y, float time) const {
     Tile t = at(x, y);
     float fx = float(x * TILE), fy = float(y * TILE);
     float v = hash01(x, y, seed_);
-    // Освещение берём из низкочастотного шума — тайлы сливаются в пятна,
-    // а не в шахматку.
-    float shade = 0.84f + 0.34f * fbm(x * 0.22f, y * 0.22f, seed_ + 5u, 3);
-    Color c = scaleC(tileBase(t), shade + v * 0.05f);
+    Color c = groundColor(x, y, time);
+
     DrawRectangle(int(fx), int(fy), TILE, TILE, c);
-    // мягкая растушёвка стыка с соседями
-    DrawRectangleGradientV(int(fx), int(fy), TILE, TILE / 2,
-                           Color{ 0, 0, 0, (unsigned char)(26 * (1.0f - shade + 0.2f)) }, BLANK);
-    // мелкая крошка — разбивает сетку тайлов
-    for (int i = 0; i < 3; ++i) {
-        float hx = hash01(x * 7 + i, y * 13 + i, seed_ + 3u);
-        float hy = hash01(x * 11 - i, y * 5 + i, seed_ + 17u);
-        if (hx + hy < 0.55f) continue;
-        DrawRectangle(int(fx + hx * (TILE - 3)), int(fy + hy * (TILE - 3)), 2, 2,
-                      scaleC(c, hx > 0.75f ? 1.35f : 0.7f));
+
+    // Растушёвка к соседям: полупрозрачные полосы по краям клетки
+    for (int side = 0; side < 4; ++side) {
+        int nxp = x + (side == 0 ? -1 : side == 1 ? 1 : 0);
+        int nyp = y + (side == 2 ? -1 : side == 3 ? 1 : 0);
+        if (at(nxp, nyp) == t) continue;
+        Color nc = withA(groundColor(nxp, nyp, time), 90);
+        switch (side) {
+            case 0: DrawRectangleGradientH(int(fx), int(fy), TILE / 2, TILE, nc, BLANK); break;
+            case 1: DrawRectangleGradientH(int(fx + TILE / 2), int(fy), TILE / 2, TILE, BLANK, nc); break;
+            case 2: DrawRectangleGradientV(int(fx), int(fy), TILE, TILE / 2, nc, BLANK); break;
+            default: DrawRectangleGradientV(int(fx), int(fy + TILE / 2), TILE, TILE / 2, BLANK, nc); break;
+        }
     }
+
+    // Мелкая крошка поверх — рассыпана по своим координатам, не по сетке
+    art::grit(Vector2{ fx + TILE * 0.5f, fy + TILE * 0.5f }, TILE * 0.5f, TILE * 0.5f,
+              seed_ + uint32_t(x * 131 + y * 977), scaleC(c, 1.6f), 4);
 
     switch (t) {
         case Tile::Water: {
-            float w = std::sin(time * 1.6f + x * 0.7f + y * 0.4f);
-            DrawRectangle(int(fx), int(fy + 8 + w * 3), TILE, 2, withA(hex(0x35608A), 90));
-            DrawRectangle(int(fx), int(fy + 20 - w * 3), TILE, 1, withA(hex(0x35608A), 60));
+            // Глубина, рябь и лунный блик
+            DrawRectangleGradientV(int(fx), int(fy), TILE, TILE, withA(hex(0x0A1424), 120), BLANK);
+            for (int i = 0; i < 3; ++i) {
+                float ph = time * 1.4f + x * 0.7f + y * 0.4f + i * 2.1f;
+                float yy = fy + 6 + i * 9 + std::sin(ph) * 2.5f;
+                float w = 10.0f + std::sin(ph * 0.7f) * 6.0f;
+                DrawLineEx(Vector2{ fx + 16 - w * 0.5f, yy }, Vector2{ fx + 16 + w * 0.5f, yy },
+                           0.9f, withA(hex(0x4A6E96), (unsigned char)(26 + 22 * v)));
+            }
+            if (v > 0.90f)
+                DrawCircleV(Vector2{ fx + 8 + v * 14, fy + 10 + v * 10 }, 1.1f,
+                            withA(hex(0xBFD8F0), 70));
             break;
         }
         case Tile::Tree: {
-            float sway = std::sin(time * 0.9f + x * 1.3f + y * 0.7f) * 1.5f;
-            float r = 9.0f + v * 4.0f;                       // размер кроны от тайла
-            float dx = (hash01(x, y, seed_ + 41u) - 0.5f) * 5.0f;
-            float dy = (hash01(x, y, seed_ + 71u) - 0.5f) * 4.0f;
-            DrawEllipse(int(fx + 16 + dx), int(fy + 25), int(r * 0.8f), 4, Color{ 0, 0, 0, 120 });
-            DrawRectangle(int(fx + 14 + dx), int(fy + 12), 4, 13, hex(0x241A14));
-            DrawCircleV(Vector2{ fx + 16 + dx + sway, fy + 11 + dy }, r, hex(0x16241A));
-            DrawCircleV(Vector2{ fx + 16 + dx - r * 0.5f + sway, fy + 14 + dy }, r * 0.66f, hex(0x0E1A12));
-            DrawCircleV(Vector2{ fx + 16 + dx + r * 0.5f + sway, fy + 14 + dy }, r * 0.66f, hex(0x1C2E20));
-            if (v > 0.72f)   // редкие сухие ветви
-                DrawLineEx(Vector2{ fx + 16 + dx, fy + 16 },
-                           Vector2{ fx + 16 + dx + (v > 0.86f ? 8 : -8), fy + 6 }, 1.4f, hex(0x2A2018));
+            // Разброс по размеру и месту сильный — иначе деревья встают рядами.
+            float hs = hash01(x, y, seed_ + 41u);
+            float sway = std::sin(time * 0.9f + x * 1.3f + y * 0.7f) * 2.0f;
+            float r = 8.0f + hs * 9.0f;
+            float dx = (hash01(x, y, seed_ + 137u) - 0.5f) * 15.0f;
+            float dy = (hash01(x, y, seed_ + 71u) - 0.5f) * 11.0f;
+            float lean = (hash01(x, y, seed_ + 211u) - 0.5f) * 7.0f;
+            Vector2 root{ fx + 16 + dx, fy + 26 + dy * 0.4f };
+
+            DrawEllipse(int(root.x), int(root.y), int(r * 1.05f), int(4 + r * 0.16f),
+                        Color{ 0, 0, 0, 110 });
+            // Ствол: конус от толстого корня к тонкой верхушке, с наклоном
+            float trunkH = 11.0f + hs * 8.0f;
+            for (int i = 0; i < 5; ++i) {
+                float u = i / 4.0f;
+                DrawLineEx(Vector2{ root.x + lean * u, root.y - u * trunkH },
+                           Vector2{ root.x + lean * (u + 0.25f) + sway * u * 0.4f,
+                                    root.y - (u + 0.25f) * trunkH },
+                           (5.2f - u * 2.6f) * (0.7f + hs * 0.5f),
+                           lerpC(hex(0x241A13), hex(0x453224), u));
+            }
+            // Ветви под кроной, чтобы не резали её поверху
+            if (hs > 0.45f) {
+                float bx = root.x + lean * 0.7f, by = root.y - trunkH * 0.7f;
+                float k = (hs > 0.72f) ? 1.0f : -1.0f;
+                DrawLineEx(Vector2{ bx, by }, Vector2{ bx + k * (5 + hs * 5), by - 7 }, 1.8f,
+                           hex(0x352619));
+            }
+            // Крона: четыре пятна разного размера, светлее сверху
+            Vector2 cr{ root.x + lean + sway, root.y - trunkH - r * 0.35f + dy * 0.3f };
+            art::blob(Vector2{ cr.x - r * 0.52f, cr.y + r * 0.26f }, r * 0.74f, r * 0.62f,
+                      hex(0x0B1510), hex(0x1C3021), 4);
+            art::blob(Vector2{ cr.x + r * 0.50f, cr.y + r * 0.22f }, r * 0.72f, r * 0.60f,
+                      hex(0x0B1510), hex(0x22381F), 4);
+            art::blob(Vector2{ cr.x + r * 0.10f, cr.y - r * 0.30f }, r * 0.62f, r * 0.52f,
+                      hex(0x0E1A12), hex(0x2F4B34), 4);
+            art::blob(cr, r, r * 0.84f, hex(0x0D1811), hex(0x28422E), 5);
+            // Просветы в листве
+            art::grit(cr, r * 0.7f, r * 0.55f, seed_ + uint32_t(x * 31 + y), hex(0x3E6144), 5);
             break;
         }
         case Tile::Rock: {
             int sides = 5 + int(v * 3.0f);
             float rr = 9.0f + v * 6.0f;
-            float rx = fx + 16 + (hash01(x, y, seed_ + 61u) - 0.5f) * 6.0f;
-            float ry = fy + 16 + (hash01(x, y, seed_ + 91u) - 0.5f) * 6.0f;
-            DrawPoly(Vector2{ rx, ry }, sides, rr, v * 90.0f, hex(0x24242C));
-            DrawPolyLinesEx(Vector2{ rx, ry }, sides, rr, v * 90.0f, 1.6f, hex(0x3E3E4A));
+            float rx = fx + 16 + (hash01(x, y, seed_ + 61u) - 0.5f) * 7.0f;
+            float ry = fy + 17 + (hash01(x, y, seed_ + 91u) - 0.5f) * 6.0f;
+            DrawEllipse(int(rx), int(ry + rr * 0.55f), int(rr), 4, Color{ 0, 0, 0, 110 });
+            // Камень слоями: тень снизу, свет сверху
+            for (int L = 4; L >= 0; --L) {
+                float k = L / 4.0f;
+                DrawPoly(Vector2{ rx, ry + rr * 0.22f * k }, sides, rr * (0.55f + 0.45f * k),
+                         v * 90.0f, lerpC(hex(0x55555F), hex(0x1E1E26), k));
+            }
+            DrawPolyLinesEx(Vector2{ rx, ry }, sides, rr, v * 90.0f, 1.3f, hex(0x60606C));
+            art::grit(Vector2{ rx, ry }, rr * 0.7f, rr * 0.6f, seed_ + uint32_t(x + y), hex(0x101016), 6);
             break;
         }
-        case Tile::Bramble:
-            for (int i = 0; i < 4; ++i) {
-                float a = v * 6.28f + i * 1.5f;
-                DrawLineEx(Vector2{ fx + 16, fy + 22 },
-                           Vector2{ fx + 16 + std::cos(a) * 11, fy + 22 - std::abs(std::sin(a)) * 15 },
-                           1.4f, hex(0x2E2A1C));
+        case Tile::Bramble: {
+            for (int i = 0; i < 6; ++i) {
+                float a = v * 6.28f + i * 1.05f;
+                Vector2 b0{ fx + 16, fy + 24 };
+                Vector2 b1{ fx + 16 + std::cos(a) * 12, fy + 24 - std::abs(std::sin(a)) * 17 };
+                DrawLineEx(b0, b1, 1.6f, hex(0x33301F));
+                // Шипы
+                DrawLineEx(b1, Vector2{ b1.x + 3, b1.y - 3 }, 1.0f, hex(0x4A452C));
+            }
+            DrawEllipse(int(fx + 16), int(fy + 25), 9, 3, Color{ 0, 0, 0, 90 });
+            break;
+        }
+        case Tile::Grave: {
+            float gx = fx + 16, gy = fy + 20;
+            DrawEllipse(int(gx), int(gy + 6), 11, 4, Color{ 0, 0, 0, 120 });
+            // Покосившаяся плита
+            float tilt = (v - 0.5f) * 5.0f;
+            for (int L = 3; L >= 0; --L) {
+                float k = L / 3.0f;
+                DrawRectangleRounded(Rectangle{ gx - 6 + tilt * k, gy - 15 + k * 3, 12, 20 },
+                                     0.45f, 4, lerpC(hex(0x5C5C68), hex(0x24242C), k));
+            }
+            DrawLineEx(Vector2{ gx + tilt, gy - 11 }, Vector2{ gx + tilt, gy - 2 }, 1.4f, hex(0x191920));
+            DrawLineEx(Vector2{ gx - 3 + tilt, gy - 8 }, Vector2{ gx + 3 + tilt, gy - 8 }, 1.4f,
+                       hex(0x191920));
+            // Пучок травы у подножия
+            for (int i = 0; i < 3; ++i)
+                DrawLineEx(Vector2{ gx - 6 + i * 6, gy + 5 }, Vector2{ gx - 7 + i * 6, gy - 1 },
+                           1.2f, hex(0x22331F));
+            break;
+        }
+        case Tile::Grass:
+        case Tile::DarkGrass: {
+            // Пучки травы: положение независимо от центра клетки
+            int tufts = (t == Tile::Grass) ? 3 : 2;
+            for (int i = 0; i < tufts; ++i) {
+                float hx = hash01(x * 7 + i, y * 3, seed_ + 17u);
+                float hy = hash01(x * 5, y * 11 + i, seed_ + 29u);
+                if (hx + hy < 0.5f) continue;
+                float gx = fx + hx * TILE, gy = fy + hy * TILE;
+                float sw = std::sin(time * 1.1f + gx * 0.05f) * 1.4f;
+                Color gc = scaleC(c, 1.45f);
+                for (int b = -1; b <= 1; ++b)
+                    DrawLineEx(Vector2{ gx + b * 2.0f, gy },
+                               Vector2{ gx + b * 2.6f + sw, gy - 4.5f - std::abs(b) * -1.5f },
+                               1.1f, gc);
+            }
+            // Редкие грибы и косточки на порче
+            if (t == Tile::DarkGrass && hash01(x, y, seed_ + 313u) > 0.985f) {
+                float mx = fx + 8 + v * 14, my = fy + 12 + v * 10;
+                DrawLineEx(Vector2{ mx, my }, Vector2{ mx, my - 3 }, 1.2f, withA(hex(0x8A7D68), 170));
+                DrawEllipse(int(mx), int(my - 4), 2, 1, withA(hex(0x5A2028), 190));
             }
             break;
-        case Tile::Grave:
-            DrawRectangleRounded(Rectangle{ fx + 11, fy + 8, 10, 16 }, 0.5f, 4, hex(0x4A4A54));
-            DrawLineEx(Vector2{ fx + 16, fy + 12 }, Vector2{ fx + 16, fy + 20 }, 1.5f, hex(0x2A2A32));
-            DrawLineEx(Vector2{ fx + 13, fy + 15 }, Vector2{ fx + 19, fy + 15 }, 1.5f, hex(0x2A2A32));
+        }
+        case Tile::Path: {
+            // Утоптанная земля: камешки и колея
+            if (v > 0.45f) {
+                float px = fx + hash01(x, y, seed_ + 3u) * TILE;
+                float py = fy + hash01(x, y, seed_ + 9u) * TILE;
+                art::blob(Vector2{ px, py }, 2.4f + v * 1.6f, 1.8f + v, hex(0x2C241A),
+                          hex(0x6A5A44), 3);
+            }
+            DrawLineEx(Vector2{ fx, fy + 10 + v * 12 }, Vector2{ fx + TILE, fy + 8 + v * 14 },
+                       1.0f, withA(hex(0x2A2018), 70));
             break;
-        case Tile::DarkGrass:
-            if (v > 0.7f) DrawLineEx(Vector2{ fx + 8, fy + 24 }, Vector2{ fx + 10, fy + 17 }, 1.2f, hex(0x22301F));
+        }
+        case Tile::Mud: {
+            // Лужи с бликом
+            if (v > 0.6f) {
+                float px = fx + 8 + v * 12, py = fy + 10 + v * 10;
+                DrawEllipse(int(px), int(py), int(6 + v * 4), int(3 + v * 2), hex(0x1A2430));
+                DrawEllipseLines(int(px), int(py), 6 + v * 4, 3 + v * 2, withA(hex(0x4A6076), 120));
+                DrawLineEx(Vector2{ px - 3, py - 1 }, Vector2{ px + 2, py - 1 }, 1.0f,
+                           withA(hex(0x93B2CC), 90));
+            }
             break;
-        case Tile::Path:
-            if (v > 0.5f) DrawCircleV(Vector2{ fx + 6 + v * 20, fy + 6 + v * 18 }, 1.4f, hex(0x4A4034));
-            break;
+        }
         default: break;
     }
 }
-
 static void drawEntity(const WorldEnt& e, float time) {
     switch (e.kind) {
         case EntKind::Resource: {

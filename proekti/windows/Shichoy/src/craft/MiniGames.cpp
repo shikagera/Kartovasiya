@@ -7,6 +7,47 @@
 
 namespace shichoy {
 
+// ── Поверхность верстака ──────────────────────────────────────────────────
+// Все игры лежат на одной физической поверхности: тёмное дерево с волокном,
+// кожаная вставка, латунные уголки. Без неё элементы висят в пустоте и
+// выглядят как набросок.
+static void drawStage(Rectangle a, float t) {
+    Rectangle board{ a.x - 14, a.y - 12, a.width + 28, a.height + 24 };
+    // Дерево: слоями от тени к свету, потом волокно
+    for (int L = 5; L >= 0; --L) {
+        float k = L / 5.0f;
+        DrawRectangleRounded(Rectangle{ board.x - k * 3, board.y - k * 3,
+                                        board.width + k * 6, board.height + k * 6 },
+                             0.05f, 6, lerpC(hex(0x4A3826), hex(0x1A120C), k));
+    }
+    for (int i = 0; i < 26; ++i) {
+        float y = board.y + board.height * (i + 0.5f) / 26.0f;
+        float wob = std::sin(y * 0.05f + i) * 4.0f;
+        DrawLineEx(Vector2{ board.x + 4, y + wob }, Vector2{ board.x + board.width - 4, y - wob },
+                   1.0f, withA(hex(0x120C08), (unsigned char)(50 + 40 * art::hash01(i, 1, 7u))));
+    }
+    // Кожаная вставка, куда всё и кладётся
+    DrawRectangleRounded(a, 0.04f, 6, hex(0x171019));
+    DrawRectangleGradientV(int(a.x), int(a.y), int(a.width), int(a.height * 0.35f),
+                           withA(BLACK, 120), BLANK);
+    art::grit(Vector2{ a.x + a.width * 0.5f, a.y + a.height * 0.5f },
+              a.width * 0.5f, a.height * 0.5f, 4242u, hex(0x2E2436), 70);
+    DrawRectangleRoundedLinesEx(a, 0.04f, 6, 2.0f, withA(hex(0x5A4630), 200));
+    // Латунные уголки с заклёпками
+    for (int i = 0; i < 4; ++i) {
+        float cx = board.x + (i % 2) * board.width;
+        float cy = board.y + (i / 2) * board.height;
+        float dx = (i % 2) ? -1.0f : 1.0f, dy = (i / 2) ? -1.0f : 1.0f;
+        DrawTriangle(Vector2{ cx, cy },
+                     Vector2{ cx + dx * 34, cy },
+                     Vector2{ cx, cy + dy * 34 },
+                     dx * dy > 0 ? hex(0x6E5628) : hex(0x6E5628));
+        art::blob(Vector2{ cx + dx * 13, cy + dy * 13 }, 4.0f, 4.0f,
+                  hex(0x3A2C14), hex(0xC7A45A), 3);
+    }
+    (void)t;
+}
+
 // ── Общее ─────────────────────────────────────────────────────────────────
 LS MiniGame::title() const {
     switch (id_) {
@@ -97,8 +138,10 @@ void MiniGame::start(MiniGameId id, float chance, Rng& r) {
                 int c;
                 bool dup;
                 int guard = 0;
+                static const int distinct[8] = { 1, 2, 5, 7, 10, 11, 13, 9 };  // огонь, вода,
+                // молния, природа, свет, яд, кровь, металл — их не спутать
                 do {
-                    c = 1 + rng_.i(0, ELEMENT_COUNT - 1);
+                    c = distinct[rng_.i(0, 7)];
                     dup = false;
                     for (int k = 0; k < i; ++k) if (wireLeft_[k] == c) dup = true;
                 } while (dup && ++guard < 64);
@@ -274,23 +317,37 @@ void MiniGame::drawWires(Rectangle a, float t) const {
         Vector2 l, r; wireEnds(a, i, wireCount_, l, r);
         Color cl = elem(ElementId(wireLeft_[i])).primary;
         Color cr = elem(ElementId(wireRight_[i])).primary;
-        // Гнёзда
-        DrawCircleV(l, 14.0f, hex(0x141018));
-        DrawCircleV(r, 14.0f, hex(0x141018));
-        DrawCircleLines(int(l.x), int(l.y), 14.0f, cl);
-        DrawCircleLines(int(r.x), int(r.y), 14.0f, cr);
-        DrawCircleV(l, 7.0f, cl);
-        DrawCircleV(r, 7.0f, cr);
+        // Латунные гнёзда: ободок с объёмом, утопленное нутро, цветная жила
+        for (int side = 0; side < 2; ++side) {
+            Vector2 p = side ? r : l;
+            Color cc = side ? cr : cl;
+            art::blob(p, 17.0f, 17.0f, hex(0x3A2C14), hex(0xC7A45A), 5);
+            DrawCircleV(p, 11.0f, hex(0x0E0A12));
+            DrawCircleV(p, 8.0f, scaleC(cc, 0.55f));
+            art::blob(p, 6.0f, 6.0f, scaleC(cc, 0.5f), scaleC(cc, 1.7f), 4);
+            DrawCircleLines(int(p.x), int(p.y), 17.0f, withA(hex(0xE8CE92), 120));
+            for (int b = 0; b < 4; ++b) {
+                float ang = b * 1.5708f + 0.4f;
+                DrawCircleV(Vector2{ p.x + std::cos(ang) * 14.0f, p.y + std::sin(ang) * 14.0f },
+                            1.8f, hex(0xE8CE92));
+            }
+        }
         // Протянутая жила провисает
         if (wireLinked_[i] >= 0) {
             Vector2 l2, r2; wireEnds(a, wireLinked_[i], wireCount_, l2, r2);
-            for (int s = 0; s < 12; ++s) {
-                float u0 = s / 12.0f, u1 = (s + 1) / 12.0f;
-                auto pt = [&](float u) {
-                    return Vector2{ l.x + (r2.x - l.x) * u,
-                                    l.y + (r2.y - l.y) * u + std::sin(u * PI) * 16.0f };
-                };
-                DrawLineEx(pt(u0), pt(u1), 4.0f, cl);
+            auto pt = [&](float u) {
+                return Vector2{ l.x + (r2.x - l.x) * u,
+                                l.y + (r2.y - l.y) * u + std::sin(u * PI) * 18.0f };
+            };
+            for (int s = 0; s < 24; ++s) {
+                float u0 = s / 24.0f, u1 = (s + 1) / 24.0f;
+                DrawLineEx(pt(u0), pt(u1), 7.0f, scaleC(cl, 0.35f));      // тень шнура
+            }
+            for (int s = 0; s < 24; ++s) {
+                float u0 = s / 24.0f, u1 = (s + 1) / 24.0f;
+                DrawLineEx(pt(u0), pt(u1), 5.0f, cl);
+                if (s % 2 == 0)                                            // витки оплётки
+                    DrawLineEx(pt(u0), pt(u1), 2.0f, scaleC(cl, 1.7f));
             }
         } else if (wireDrag_ == i) {
             DrawLineEx(l, m, 4.0f, withA(cl, 220));
@@ -585,6 +642,7 @@ void MiniGame::drawCipher(Rectangle a, float t) const {
 
 // ── Отрисовка ─────────────────────────────────────────────────────────────
 void MiniGame::draw(Rectangle a, float t) const {
+    drawStage(a, t);
     switch (id_) {
         case MiniGameId::Timing:     drawTiming(a, t); break;
         case MiniGameId::Wires:      drawWires(a, t); break;
