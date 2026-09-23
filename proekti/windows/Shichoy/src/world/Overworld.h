@@ -20,6 +20,9 @@ enum class EntKind : int {
     RuinGate,       // вход в руины: босс
     EventSite,      // событие: мини-игра, мутация, находка
     Carriage,       // выход из забега
+    Bonfire,        // костёр: отдых и перековка
+    Cache,          // тайник: заперт, нужен верный приём
+    Shrine,         // алтарь: жертва ради постоянной прибавки
     Enemy           // бродячий враг
 };
 
@@ -45,6 +48,11 @@ struct WorldTouch {         // что произошло за кадр
 class Overworld {
 public:
     void generate(int depth, Rng& r);
+    // Регион — чистая функция от (глубина, сид): нужно для сохранения забега.
+    void generate(int depth, uint32_t seed);
+    uint32_t seed() const { return seed_; }
+    std::vector<WorldEnt>& entsMut() { return ents_; }
+    const std::vector<WorldEnt>& ents() const { return ents_; }
     void update(float dt, bool inputEnabled);
     void draw(float time) const;
     void drawHud(float time) const;

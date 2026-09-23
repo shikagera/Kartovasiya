@@ -680,7 +680,24 @@ void Game::debugForceScene(int which) {
             scene_ = Scene::Combat;
             break;
         }
-        default: break;
+        default:
+            // 8..15 — по одной мини-игре на кадр
+            if (which >= 20 && which < 20 + int(Archetype::COUNT)) {
+                startRun();
+                Enemy e = genEnemy(rng_, 6, false);
+                e.arche = Archetype(which - 20);
+                combat_.begin(&deck_, &player_, std::move(e), 6, &rng_);
+                scene_ = Scene::Combat;
+                break;
+            }
+            if (which >= 8 && which < 8 + int(MiniGameId::COUNT)) {
+                startRun();
+                openCraft();
+                plan_.chance = 0.5f;
+                mini_.start(MiniGameId(which - 8), 0.5f, rng_);
+                planActive_ = true;
+            }
+            break;
     }
 }
 } // namespace shichoy

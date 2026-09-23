@@ -60,6 +60,8 @@ void drawStarfield(int w, int h, float t, uint32_t seed);
 void drawCard(const Card& card, Rectangle r, float hover, bool selected, float t,
               bool showBack = false);
 void drawCardBack(Rectangle r, float t);
+// Сюжетное окно карты: небо, горизонт, мотив стихии и арка сверху.
+void drawCardScene(Rectangle win, const Card& card, float t);
 
 // ── Characters / Персонажи ────────────────────────────────────────────────
 // Мрачный аристократ-маг: чёрный фрак, цилиндр, трость.

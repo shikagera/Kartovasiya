@@ -91,6 +91,8 @@ void Game::init() {
 
 void Game::shutdown() {
     saveMeta(meta_);
+    // Незаконченный забег переживает закрытие окна.
+    if (scene_ != Scene::Menu && scene_ != Scene::RunEnd) saveRun();
     audio::shutdown();
     art::shutdown();
 }
@@ -122,6 +124,7 @@ void Game::endRun(bool died) {
     }
     meta_.unlockedCards = std::max(meta_.unlockedCards, int(deck_.library().size()));
     saveMeta(meta_);
+    clearRunSave();
     scene_ = Scene::RunEnd;
 }
 
@@ -129,6 +132,7 @@ void Game::nextRegion() {
     depth_++;
     world_.generate(depth_, rng_);
     scene_ = Scene::Overworld;
+    saveRun();
     char buf[128];
     snprintf(buf, sizeof buf, g_lang == Lang::Ru ? "Глубина %d. Земля становится темнее."
                                                  : "Depth %d. The land grows darker.", depth_);
@@ -178,15 +182,16 @@ void Game::afterCombat() {
 
 // ── Menu ──────────────────────────────────────────────────────────────────
 void Game::updateMenu(float) {
-    if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S)) menuIndex_ = (menuIndex_ + 1) % 4;
-    if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W))   menuIndex_ = (menuIndex_ + 3) % 4;
+    if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S)) menuIndex_ = (menuIndex_ + 1) % 5;
+    if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W))   menuIndex_ = (menuIndex_ + 4) % 5;
     bool go = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
     if (go) {
         switch (menuIndex_) {
             case 0: startRun(); break;
-            case 1: codexPage_ = 0; codexReturn_ = Scene::Menu; scene_ = Scene::Codex; break;
-            case 2: if (art::hasCyrillic()) g_lang = (g_lang == Lang::Ru ? Lang::En : Lang::Ru); break;
-            case 3: exit_ = true; break;
+            case 1: if (hasRunSave() && loadRun()) {} break;
+            case 2: codexPage_ = 0; codexReturn_ = Scene::Menu; scene_ = Scene::Codex; break;
+            case 3: if (art::hasCyrillic()) g_lang = (g_lang == Lang::Ru ? Lang::En : Lang::Ru); break;
+            case 4: exit_ = true; break;
         }
     }
 }
@@ -214,27 +219,32 @@ void Game::drawMenu() {
                titleSize, titleGap, art::pal::GoldLit);
     art::textC(sub, cx, sh_ * 0.06f + 80.0f, 15.0f, withA(art::pal::Vellum, 200));
 
-    const LS items[4] = {
+    const bool canContinue = hasRunSave();
+    const LS items[5] = {
         LS("Новый забег", "New Run"),
+        LS("Продолжить забег", "Continue Run"),
         LS("Кодекс стихий", "Codex of Elements"),
         LS("Язык: Русский / English", "Language: English / Русский"),
         LS("Выход", "Quit")
     };
-    for (int i = 0; i < 4; ++i) {
-        Rectangle r{ cx - 170.0f, sh_ * 0.56f + i * 52.0f, 340.0f, 42.0f };
+    for (int i = 0; i < 5; ++i) {
+        Rectangle r{ cx - 170.0f, sh_ * 0.54f + i * 46.0f, 340.0f, 38.0f };
         bool sel = (menuIndex_ == i);
-        if (sel) DrawRectangleRoundedLinesEx(Rectangle{ r.x - 6, r.y - 4, r.width + 12, r.height + 8 },
-                                             0.3f, 6, 1.5f, withA(art::pal::GoldLit, 200));
-        if (button(r, items[i].c_str(), true, 19.0f)) {
+        bool on = (i != 1) || canContinue;
+        if (sel && on)
+            DrawRectangleRoundedLinesEx(Rectangle{ r.x - 6, r.y - 4, r.width + 12, r.height + 8 },
+                                        0.3f, 6, 1.5f, withA(art::pal::GoldLit, 200));
+        if (button(r, items[i].c_str(), on, 18.0f)) {
             menuIndex_ = i;
             switch (i) {
                 case 0: startRun(); break;
-                case 1: codexPage_ = 0; codexReturn_ = Scene::Menu; scene_ = Scene::Codex; break;
-                case 2: if (art::hasCyrillic()) g_lang = (g_lang == Lang::Ru ? Lang::En : Lang::Ru); break;
-                case 3: exit_ = true; break;
+                case 1: loadRun(); break;
+                case 2: codexPage_ = 0; codexReturn_ = Scene::Menu; scene_ = Scene::Codex; break;
+                case 3: if (art::hasCyrillic()) g_lang = (g_lang == Lang::Ru ? Lang::En : Lang::Ru); break;
+                case 4: exit_ = true; break;
             }
         }
-        if (CheckCollisionPointRec(GetMousePosition(), r)) menuIndex_ = i;
+        if (on && CheckCollisionPointRec(GetMousePosition(), r)) menuIndex_ = i;
     }
 
     char buf[160];
@@ -252,6 +262,10 @@ void Game::drawMenu() {
 // ── Overworld ─────────────────────────────────────────────────────────────
 void Game::updateOverworld(float dt) {
     world_.update(dt, true);
+
+    // Раз в несколько секунд тихо дописываем снимок забега.
+    runSaveT_ += dt;
+    if (runSaveT_ > 6.0f) { runSaveT_ = 0.0f; saveRun(); }
 
     int enc = world_.pendingEncounter();
     if (enc >= 0) { enterCombat(false, enc); return; }
@@ -423,6 +437,43 @@ void Game::interact(int entIndex) {
                 { { LS("Войти (бой с боссом)", "Enter (boss fight)"), 40 },
                   { LS("Не сейчас", "Not now"), 0 } }, 3);
             break;
+        case EntKind::Bonfire:
+            openDialog(e.name,
+                LS("Угли ещё живые. Кто-то сидел здесь недавно и ушёл в спешке.",
+                   "The coals are still alive. Someone sat here and left in a hurry."),
+                { { LS("Погреться (+35% HP, костёр гаснет)", "Warm yourself (+35% HP, the fire dies)"), 50 },
+                  { LS("Перековать карту в огне", "Reforge a card in the flames"), 51 },
+                  { LS("Пройти мимо", "Walk on"), 0 } }, 5);
+            break;
+        case EntKind::Cache: {
+            static const LS locks[3] = {
+                LS("Замок с четырьмя жилами", "A lock of four veins"),
+                LS("Механизм требует твёрдой руки", "The mechanism wants a steady hand"),
+                LS("Крышка запечатана сургучом", "The lid is sealed with wax")
+            };
+            openDialog(e.name,
+                LS(std::string("Ящик вмурован в землю. ") + locks[clampi(e.data, 0, 2)].ru + ".",
+                   std::string("The chest is set into the earth. ") + locks[clampi(e.data, 0, 2)].en + "."),
+                { { LS("Вскрыть", "Force it open"), 52 },
+                  { LS("Оставить", "Leave it"), 0 } }, 6);
+            break;
+        }
+        case EntKind::Shrine: {
+            static const LS gifts[3] = {
+                LS("+8 к максимуму HP", "+8 max HP"),
+                LS("+1 слот хода до конца забега", "+1 card slot for the rest of the run"),
+                LS("+1 карта к добору до конца забега", "+1 card drawn per turn")
+            };
+            openDialog(e.name,
+                LS(std::string("На плите высечено одно слово, и оно нечитаемо. Взамен — ")
+                       + gifts[clampi(e.data, 0, 2)].ru + ".",
+                   std::string("One word is cut into the slab, and it cannot be read. In return — ")
+                       + gifts[clampi(e.data, 0, 2)].en + "."),
+                { { LS("Отдать 12 материалов", "Give 12 materials"), 53, inv_.total() >= 12 },
+                  { LS("Отдать 12 HP", "Give 12 HP"), 54, player_.hp > 13 },
+                  { LS("Отступить", "Step back"), 0 } }, 7);
+            break;
+        }
         case EntKind::Carriage:
             openDialog(e.name,
                 LS("Лошади стоят смирно. Уехать — значит сохранить добытое.",
@@ -533,6 +584,81 @@ void Game::resolveDialog(int action) {
             scene_ = Scene::Overworld;
             break;
         }
+        case 50: {                                            // костёр: погреться
+            int heal = int(player_.maxHp * 0.35f);
+            player_.hp = std::min(player_.maxHp, player_.hp + heal);
+            audio::play(audio::Sfx::Heal, 0.9f);
+            toast(LS("Вы грелись, пока угли не подёрнулись пеплом.",
+                     "You warmed yourself until the coals went grey."));
+            if (pendingEnt_ >= 0) { world_.removeEnt(pendingEnt_); pendingEnt_ = -1; }
+            scene_ = Scene::Overworld;
+            break;
+        }
+        case 51:                                              // костёр: перековка
+            craftAction_ = int(CraftAction::Upgrade);
+            craftTarget_ = deck_.library().empty() ? -1 : 0;
+            plan_ = makePlan(CraftAction::Upgrade, depth_, deck_, craftTarget_, rng_);
+            for (int i = 0; i < MATERIAL_COUNT; ++i) plan_.cost[i] = 0;   // платит костёр
+            plan_.title = LS("Перековка в огне", "Reforging in the Flames");
+            planActive_ = false;
+            craftResult_ = LS("", "");
+            mini_.reset();
+            if (pendingEnt_ >= 0) { world_.removeEnt(pendingEnt_); pendingEnt_ = -1; }
+            scene_ = Scene::Craft;
+            break;
+        case 52: {                                            // тайник: вскрыть
+            // Замок сам выбирает, каким приёмом его берут.
+            static const MiniGameId locks[3] = { MiniGameId::Wires, MiniGameId::SteadyHand,
+                                                 MiniGameId::Seal };
+            int which = 0;
+            if (pendingEnt_ >= 0 && pendingEnt_ < world_.entCount())
+                which = clampi(world_.ent(pendingEnt_).data, 0, 2);
+            craftAction_ = int(CraftAction::Forge);
+            craftTarget_ = -1;
+            plan_ = makePlan(CraftAction::Forge, depth_ + 2, deck_, -1, rng_);
+            for (int i = 0; i < MATERIAL_COUNT; ++i) plan_.cost[i] = 0;
+            plan_.title = LS("Вскрыть тайник", "Force the Cache");
+            plan_.desc = LS("Внутри что-то есть. Сломаете замок — заберёте.",
+                            "There is something inside. Break the lock and it is yours.");
+            planActive_ = true;
+            craftResult_ = LS("", "");
+            mini_.start(locks[which], 0.55f, rng_);
+            if (pendingEnt_ >= 0) { world_.removeEnt(pendingEnt_); pendingEnt_ = -1; }
+            scene_ = Scene::Craft;
+            break;
+        }
+        case 53:
+        case 54: {                                            // алтарь: жертва
+            int gift = 0;
+            if (pendingEnt_ >= 0 && pendingEnt_ < world_.entCount())
+                gift = clampi(world_.ent(pendingEnt_).data, 0, 2);
+            if (action == 53) {
+                int cost = 12, paid = 0;
+                for (int i = 0; i < MATERIAL_COUNT && paid < cost; ++i) {
+                    int take = std::min(inv_.mats[i], cost - paid);
+                    inv_.mats[i] -= take; paid += take;
+                }
+            } else {
+                player_.hp = std::max(1, player_.hp - 12);
+            }
+            switch (gift) {
+                case 0: player_.maxHp += 8; player_.hp += 8;
+                        toast(LS("Кости стали тяжелее. +8 HP.", "Your bones grow heavier. +8 HP."));
+                        break;
+                case 1: player_.baseCardLimit += 1;
+                        toast(LS("Рука стала свободнее. +1 слот хода.",
+                                 "Your hand loosens. +1 card slot."));
+                        break;
+                default: player_.drawPerTurn += 1;
+                        toast(LS("Карты идут охотнее. +1 к добору.",
+                                 "The cards come easier. +1 draw."));
+                        break;
+            }
+            audio::play(audio::Sfx::CraftPerfect, 0.8f);
+            if (pendingEnt_ >= 0) { world_.removeEnt(pendingEnt_); pendingEnt_ = -1; }
+            scene_ = Scene::Overworld;
+            break;
+        }
         case 40:  enterCombat(true, pendingEnt_); break;
         case 100: nextRegion(); break;
         case 101: scene_ = Scene::Overworld; break;
@@ -633,8 +759,12 @@ void Game::openCraft() {
     scene_ = Scene::Craft;
 }
 
+Rectangle Game::craftPlayArea() const {
+    return Rectangle{ 40.0f, 386.0f, sw_ - 80.0f, sh_ - 446.0f };
+}
+
 void Game::updateCraft(float dt) {
-    mini_.update(dt);
+    mini_.update(dt, craftPlayArea());
 
     if (mini_.finished() && planActive_) {
         planActive_ = false;
@@ -642,8 +772,6 @@ void Game::updateCraft(float dt) {
         audio::play(mini_.perfect() ? audio::Sfx::CraftPerfect
                                     : (mini_.success() ? audio::Sfx::CraftSuccess : audio::Sfx::CraftFail), 0.9f);
     }
-    if (mini_.running() && (IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT)))
-        mini_.commit();
 
     if (IsKeyPressed(KEY_ESCAPE) && !mini_.running()) {
         scene_ = Scene::Overworld;
@@ -732,36 +860,39 @@ void Game::drawCraft() {
             return;
         }
         audio::play(audio::Sfx::CraftStart, 0.8f);
-        mini_.start(plan_.chance, rng_);
+        mini_.startRandom(plan_.chance, rng_);
         planActive_ = true;
         craftResult_ = LS("", "");
     }
 
-    // Мини-игра
-    Rectangle bar{ 24, 372, sw_ - 48.0f, 54.0f };
-    panel(bar, 0.95f);
-    Rectangle track{ bar.x + 20, bar.y + 18, bar.width - 40, 20 };
-    DrawRectangleRounded(track, 0.5f, 6, hex(0x141018));
-    if (mini_.running() || mini_.finished()) {
-        Rectangle zone{ track.x + track.width * mini_.zoneStart(), track.y,
-                        track.width * (mini_.zoneEnd() - mini_.zoneStart()), track.height };
-        DrawRectangleRounded(zone, 0.5f, 6, withA(hex(0x2D6A4F), 190));
-        Rectangle pz{ track.x + track.width * mini_.perfectStart(), track.y,
-                      track.width * (mini_.perfectEnd() - mini_.perfectStart()), track.height };
-        DrawRectangleRounded(pz, 0.5f, 6, withA(art::pal::GoldLit, 210));
-        float mx = track.x + track.width * mini_.marker();
-        DrawRectangle(int(mx) - 2, int(track.y) - 6, 4, int(track.height) + 12, art::pal::Parchment);
+    // ── Мини-игра ─────────────────────────────────────────────────────────
+    // Пока идёт работа, нижняя половина экрана целиком отдана под неё.
+    if (mini_.running() || (mini_.finished() && !craftResult_.empty())) {
+        Rectangle stage{ 24, 360, sw_ - 48.0f, sh_ - 396.0f };
+        panel(stage, 0.97f);
+        art::textC(mini_.title().c_str(), stage.x + stage.width * 0.5f, stage.y + 8.0f, 20.0f,
+                   art::pal::GoldLit);
+        art::textC(mini_.hint().c_str(), stage.x + stage.width * 0.5f, stage.y + 32.0f, 13.0f,
+                   withA(art::pal::Vellum, 215));
+        mini_.draw(craftPlayArea(), time_);
+
+        if (!craftResult_.empty()) {
+            Rectangle res{ stage.x + stage.width * 0.5f - 280.0f, stage.y + stage.height - 52.0f,
+                           560.0f, 38.0f };
+            DrawRectangleRounded(res, 0.3f, 6, Color{ 10, 8, 14, 235 });
+            DrawRectangleRoundedLinesEx(res, 0.3f, 6, 1.4f,
+                                        mini_.success() ? hex(0x59C772) : art::pal::Risk);
+            art::textC(craftResult_.c_str(), res.x + res.width * 0.5f, res.y + 10.0f, 15.0f,
+                       mini_.success() ? hex(0x59C772) : art::pal::Risk);
+        }
+        art::textC(g_lang == Lang::Ru ? "ESC — закрыть верстак" : "ESC — close the workbench",
+                   sw_ * 0.5f, float(sh_ - 22), 13.0f, withA(art::pal::Vellum, 170));
+        art::drawVignette(sw_, sh_, 0.85f);
+        return;
     }
-    DrawRectangleRoundedLinesEx(track, 0.5f, 6, 1.2f, withA(art::pal::Gold, 150));
-    if (mini_.running())
-        art::textC(g_lang == Lang::Ru ? "SPACE / клик — остановить" : "SPACE / click to stop",
-                   sw_ * 0.5f, bar.y + 42.0f, 13.0f, withA(art::pal::Vellum, 200));
-    if (!craftResult_.empty())
-        art::textC(craftResult_.c_str(), sw_ * 0.5f, bar.y + 42.0f, 15.0f,
-                   mini_.success() ? hex(0x59C772) : art::pal::Risk);
 
     // Библиотека карт (цель для усиления/мутации)
-    Rectangle lib{ 24, 440, sw_ - 48.0f, sh_ - 480.0f };
+    Rectangle lib{ 24, 370, sw_ - 48.0f, sh_ - 410.0f };
     panel(lib, 0.95f);
     art::text(g_lang == Lang::Ru ? "Ваши карты (клик — выбрать цель)"
                                  : "Your cards (click to target)",
@@ -957,6 +1088,14 @@ void Game::frame() {
 
     if (IsKeyPressed(KEY_M)) audio::setMuted(!audio::muted());
 
+    // Пауза доступна везде, кроме меню и экрана конца забега.
+    bool pausable = (scene_ != Scene::Menu && scene_ != Scene::RunEnd);
+    if (pausable && IsKeyPressed(KEY_P)) {
+        paused_ = !paused_;
+        audio::play(paused_ ? audio::Sfx::UiBack : audio::Sfx::UiClick, 0.6f);
+    }
+    if (!pausable) paused_ = false;
+
     // Музыка следует за сценой: меню — полный трек, поле — шёпот,
     // бой и подготовка к нему — напряжённый пульс.
     switch (scene_) {
@@ -969,14 +1108,16 @@ void Game::frame() {
     }
     audio::update(dt);
 
+    if (paused_) dt = 0.0f;                 // мир замирает, но кадр рисуется
+
     switch (scene_) {
         case Scene::Menu:      updateMenu(dt); break;
-        case Scene::Overworld: updateOverworld(dt); break;
-        case Scene::TablePull: updateTablePull(dt); break;
-        case Scene::Combat:    updateCombat(dt); break;
-        case Scene::Reward:    updateReward(dt); break;
-        case Scene::Dialog:    updateDialog(dt); break;
-        case Scene::Craft:     updateCraft(dt); break;
+        case Scene::Overworld: if (!paused_) updateOverworld(dt); break;
+        case Scene::TablePull: if (!paused_) updateTablePull(dt); break;
+        case Scene::Combat:    if (!paused_) updateCombat(dt); break;
+        case Scene::Reward:    if (!paused_) updateReward(dt); break;
+        case Scene::Dialog:    if (!paused_) updateDialog(dt); break;
+        case Scene::Craft:     if (!paused_) updateCraft(dt); break;
         case Scene::RunEnd:    updateRunEnd(dt); break;
         case Scene::Codex:     updateCodex(dt); break;
     }
@@ -993,7 +1134,264 @@ void Game::frame() {
         case Scene::RunEnd:    drawRunEnd(); break;
         case Scene::Codex:     drawCodex(); break;
     }
+    if (paused_) drawPauseOverlay();
     EndDrawing();
+}
+
+} // namespace shichoy
+
+namespace shichoy {
+
+// ── Пауза ─────────────────────────────────────────────────────────────────
+void Game::drawPauseOverlay() {
+    DrawRectangle(0, 0, sw_, sh_, Color{ 0, 0, 0, 190 });
+    Rectangle box{ sw_ * 0.5f - 230.0f, sh_ * 0.5f - 190.0f, 460.0f, 380.0f };
+    panel(box, 1.0f);
+    art::textC(g_lang == Lang::Ru ? "ПАУЗА" : "PAUSED", box.x + box.width * 0.5f, box.y + 22.0f,
+               28.0f, art::pal::GoldLit);
+
+    // Громкость: полоса, по которой можно кликнуть
+    art::text(g_lang == Lang::Ru ? "Громкость" : "Volume", box.x + 40, box.y + 82.0f, 16.0f,
+              art::pal::Parchment);
+    Rectangle vol{ box.x + 40, box.y + 108.0f, box.width - 80, 20.0f };
+    DrawRectangleRounded(vol, 0.5f, 6, hex(0x141018));
+    float v = audio::muted() ? 0.0f : audio::masterVolume();
+    DrawRectangleRounded(Rectangle{ vol.x + 2, vol.y + 2, (vol.width - 4) * v, vol.height - 4 },
+                         0.5f, 6, art::pal::Gold);
+    DrawRectangleRoundedLinesEx(vol, 0.5f, 6, 1.2f, withA(art::pal::Gold, 180));
+    Vector2 m = GetMousePosition();
+    if (CheckCollisionPointRec(m, vol) && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        audio::setMuted(false);
+        audio::setMasterVolume(clampf((m.x - vol.x) / vol.width, 0.0f, 1.0f));
+    }
+    char vt[64];
+    snprintf(vt, sizeof vt, "%d%%", int(v * 100));
+    art::text(vt, vol.x + vol.width - 44, vol.y + 2.0f, 14.0f, art::pal::GoldLit);
+
+    Rectangle b1{ box.x + 60, box.y + 156.0f, box.width - 120, 42.0f };
+    if (button(b1, audio::muted() ? (g_lang == Lang::Ru ? "Включить звук [M]" : "Unmute [M]")
+                                  : (g_lang == Lang::Ru ? "Выключить звук [M]" : "Mute [M]"), true, 16.0f))
+        audio::setMuted(!audio::muted());
+
+    Rectangle b2{ box.x + 60, box.y + 208.0f, box.width - 120, 42.0f };
+    if (button(b2, g_lang == Lang::Ru ? "Кодекс [K]" : "Codex [K]", true, 16.0f)) {
+        paused_ = false;
+        codexReturn_ = scene_;
+        codexPage_ = 0;
+        scene_ = Scene::Codex;
+    }
+
+    Rectangle b3{ box.x + 60, box.y + 260.0f, box.width - 120, 42.0f };
+    if (button(b3, g_lang == Lang::Ru ? "Продолжить [P]" : "Resume [P]", true, 17.0f))
+        paused_ = false;
+
+    Rectangle b4{ box.x + 60, box.y + 312.0f, box.width - 120, 42.0f };
+    if (button(b4, g_lang == Lang::Ru ? "Бросить забег и выйти в меню"
+                                      : "Abandon the run and quit to menu", true, 15.0f)) {
+        paused_ = false;
+        endRun(true);
+    }
+}
+
+} // namespace shichoy
+
+namespace shichoy {
+
+// ── Сохранение забега ─────────────────────────────────────────────────────
+// Пишем всё, что нельзя вывести заново: колоду с текстами, реликвии,
+// инвентарь, состояние региона. Сам регион восстанавливается из сида.
+static const char* RUN_FILE = "shichoy_run.bin";
+static const uint32_t RUN_MAGIC = 0x53484931u;   // 'SHI1'
+
+static void putLS(Blob& b, const LS& s) { b.str(s.ru); b.str(s.en); }
+static LS   getLS(Blob& b) { std::string r = b.rstr(); std::string e = b.rstr(); return LS(r, e); }
+
+static void putCard(Blob& b, const Card& c) {
+    b.u32(c.uid);
+    b.i32(int(c.type)); b.i32(int(c.element)); b.i32(int(c.tier));
+    b.u32(uint32_t(c.chain.size()));
+    for (ElementId e : c.chain) b.i32(int(e));
+    putLS(b, c.name); putLS(b, c.text);
+    b.i32(int(c.rarity)); b.i32(int(c.spell)); b.i32(int(c.effect));
+    b.i32(c.power); b.i32(c.amount); b.i32(c.cost); b.i32(c.level);
+    b.u32(uint32_t(c.flags));
+}
+static Card getCard(Blob& b) {
+    Card c;
+    c.uid = b.ru32();
+    c.type = CardType(b.ri32()); c.element = ElementId(b.ri32()); c.tier = MergeTier(b.ri32());
+    uint32_t n = b.ru32();
+    if (n > 64) n = 0;
+    for (uint32_t i = 0; i < n; ++i) c.chain.push_back(ElementId(b.ri32()));
+    c.name = getLS(b); c.text = getLS(b);
+    c.rarity = CardRarity(b.ri32()); c.spell = SpellEffect(b.ri32()); c.effect = EffectKind(b.ri32());
+    c.power = b.ri32(); c.amount = b.ri32(); c.cost = b.ri32(); c.level = b.ri32();
+    c.flags = CardFlags(b.ru32());
+    return c;
+}
+
+bool Game::hasRunSave() { return FileExists(RUN_FILE); }
+void Game::clearRunSave() { if (FileExists(RUN_FILE)) remove(RUN_FILE); }
+
+void Game::saveRun() const {
+    Blob b;
+    b.u32(RUN_MAGIC);
+    b.i32(depth_);
+    b.i32(int(g_lang));
+
+    // Игрок
+    b.i32(player_.hp); b.i32(player_.maxHp); b.i32(player_.shield);
+    b.i32(player_.baseCardLimit); b.i32(player_.drawPerTurn);
+    b.u32(uint32_t(player_.statuses.size()));
+    for (const auto& s : player_.statuses) { b.i32(int(s.id)); b.i32(s.stacks); b.i32(s.turns); }
+    b.u32(uint32_t(player_.relics.size()));
+    for (RelicId r : player_.relics) b.i32(int(r));
+
+    // Инвентарь и колода
+    for (int i = 0; i < MATERIAL_COUNT; ++i) b.i32(inv_.mats[i]);
+    const auto& lib = deck_.library();
+    b.u32(uint32_t(lib.size()));
+    for (const auto& c : lib) putCard(b, c);
+
+    // Регион: сид плюс то, что игрок уже изменил
+    b.u32(world_.seed());
+    b.f32(world_.playerPos().x); b.f32(world_.playerPos().y);
+    const auto& ents = world_.ents();
+    b.u32(uint32_t(ents.size()));
+    for (const auto& e : ents) {
+        b.i32(int(e.kind)); b.f32(e.pos.x); b.f32(e.pos.y);
+        b.i32(e.data); b.u8(e.used ? 1 : 0); b.u8(e.boss ? 1 : 0);
+        b.f32(e.home.x); b.f32(e.home.y); b.u32(e.seed);
+        putLS(b, e.name);
+    }
+
+    SaveFileData(RUN_FILE, (void*)b.bytes().data(), int(b.bytes().size()));
+}
+
+bool Game::loadRun() {
+    if (!FileExists(RUN_FILE)) return false;
+    int size = 0;
+    unsigned char* raw = LoadFileData(RUN_FILE, &size);
+    if (!raw || size <= 0) return false;
+
+    Blob b;
+    b.adopt(raw, size_t(size));
+    UnloadFileData(raw);
+
+    if (b.ru32() != RUN_MAGIC) return false;
+    depth_ = b.ri32();
+    int lang = b.ri32();
+    if (art::hasCyrillic()) g_lang = Lang(clampi(lang, 0, 1));
+
+    player_ = Player{};
+    player_.hp = b.ri32(); player_.maxHp = b.ri32(); player_.shield = b.ri32();
+    player_.baseCardLimit = b.ri32(); player_.drawPerTurn = b.ri32();
+    uint32_t ns = b.ru32();
+    if (ns > 64) return false;
+    for (uint32_t i = 0; i < ns; ++i) {
+        StatusInst s;
+        s.id = StatusId(b.ri32()); s.stacks = b.ri32(); s.turns = b.ri32();
+        player_.statuses.push_back(s);
+    }
+    uint32_t nr = b.ru32();
+    if (nr > 64) return false;
+    for (uint32_t i = 0; i < nr; ++i) player_.relics.push_back(RelicId(b.ri32()));
+
+    inv_ = Inventory{};
+    for (int i = 0; i < MATERIAL_COUNT; ++i) inv_.mats[i] = b.ri32();
+
+    uint32_t nc = b.ru32();
+    if (nc > 4096) return false;
+    std::vector<Card> lib;
+    lib.reserve(nc);
+    for (uint32_t i = 0; i < nc; ++i) lib.push_back(getCard(b));
+    deck_.reset(std::move(lib));
+
+    uint32_t seed = b.ru32();
+    float px = b.rf32(), py = b.rf32();
+    world_.generate(depth_, seed);                 // тот же регион из того же сида
+    world_.setPlayerPos(Vector2{ px, py });
+
+    uint32_t ne = b.ru32();
+    if (ne > 4096) return false;
+    std::vector<WorldEnt> ents;
+    ents.reserve(ne);
+    for (uint32_t i = 0; i < ne; ++i) {
+        WorldEnt e;
+        e.kind = EntKind(b.ri32()); e.pos.x = b.rf32(); e.pos.y = b.rf32();
+        e.data = b.ri32(); e.used = b.ru8() != 0; e.boss = b.ru8() != 0;
+        e.home.x = b.rf32(); e.home.y = b.rf32(); e.seed = b.ru32();
+        e.name = getLS(b);
+        ents.push_back(e);
+    }
+    if (!b.ok()) return false;                     // файл битый — начинаем заново
+    world_.entsMut() = std::move(ents);
+    world_.clearEncounter();
+
+    diedLastRun_ = false;
+    paused_ = false;
+    scene_ = Scene::Overworld;
+    return true;
+}
+
+} // namespace shichoy
+
+namespace shichoy {
+
+// Проверка сохранения: снимаем забег, портим состояние, грузим обратно.
+bool Game::debugSaveRoundTrip() {
+    startRun();
+    depth_ = 7;
+    player_.maxHp = 123; player_.hp = 77;
+    player_.baseCardLimit = 6; player_.drawPerTurn = 7;
+    player_.relics.push_back(RelicId::Alembic);
+    player_.relics.push_back(RelicId::SpotHunter);
+    player_.addStatus(StatusId::Burn, 3, 2);
+    for (int i = 0; i < MATERIAL_COUNT; ++i) inv_.mats[i] = 10 + i;
+    for (int i = 0; i < 9; ++i) deck_.addCard(genCard(rng_, 5));
+    world_.setPlayerPos(Vector2{ 777.0f, 555.0f });
+
+    const int   wantDepth = depth_;
+    const int   wantHp = player_.hp, wantMax = player_.maxHp;
+    const int   wantLimit = player_.baseCardLimit, wantDraw = player_.drawPerTurn;
+    const size_t wantDeck = deck_.library().size();
+    const size_t wantRelics = player_.relics.size();
+    const size_t wantStatus = player_.statuses.size();
+    const uint32_t wantSeed = world_.seed();
+    const int   wantEnts = world_.entCount();
+    const std::string wantFirstCard = deck_.library().empty() ? "" : deck_.library()[0].name.ru;
+    const Vector2 wantPos = world_.playerPos();
+
+    saveRun();
+
+    // Портим всё, что можно
+    depth_ = 1;
+    player_ = Player{};
+    inv_ = Inventory{};
+    deck_.reset({});
+    world_.generate(1, rng_);
+
+    if (!loadRun()) { TraceLog(LOG_WARNING, "savetest: loadRun failed"); return false; }
+
+    bool ok = depth_ == wantDepth
+           && player_.hp == wantHp && player_.maxHp == wantMax
+           && player_.baseCardLimit == wantLimit && player_.drawPerTurn == wantDraw
+           && deck_.library().size() == wantDeck
+           && player_.relics.size() == wantRelics
+           && player_.statuses.size() == wantStatus
+           && world_.seed() == wantSeed
+           && world_.entCount() == wantEnts
+           && (deck_.library().empty() || deck_.library()[0].name.ru == wantFirstCard)
+           && std::fabs(world_.playerPos().x - wantPos.x) < 0.5f
+           && std::fabs(world_.playerPos().y - wantPos.y) < 0.5f;
+
+    TraceLog(LOG_INFO, "savetest: depth %d/%d hp %d/%d deck %d/%d relics %d/%d ents %d/%d seed %u/%u",
+             depth_, wantDepth, player_.hp, wantHp,
+             int(deck_.library().size()), int(wantDeck),
+             int(player_.relics.size()), int(wantRelics),
+             world_.entCount(), wantEnts, world_.seed(), wantSeed);
+    clearRunSave();
+    return ok;
 }
 
 } // namespace shichoy

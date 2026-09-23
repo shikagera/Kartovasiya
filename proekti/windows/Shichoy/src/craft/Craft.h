@@ -1,6 +1,7 @@
 // Crafting / Крафт: материалы → карты. Успех решает мини-игра (потолок 70%).
 #pragma once
 #include "core/Cards.h"
+#include "craft/MiniGames.h"
 
 namespace shichoy {
 

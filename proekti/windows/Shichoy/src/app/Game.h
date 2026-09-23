@@ -3,6 +3,7 @@
 #include "world/Overworld.h"
 #include "combat/Combat.h"
 #include "craft/Craft.h"
+#include "core/Save.h"
 
 namespace shichoy {
 
@@ -39,6 +40,7 @@ public:
     void frame();                 // один кадр: update + draw
     bool wantsExit() const { return exit_; }
     void debugForceScene(int which);   // dev: прыжок в сцену для скриншотов
+    bool debugSaveRoundTrip();         // dev: сохранить, испортить, загрузить, сверить
 
 private:
     // ── сцены ─────────────────────────────────────────────────────────────
@@ -63,6 +65,12 @@ private:
     void resolveDialog(int action);
     void openCraft();
 
+    // ── сохранение забега ─────────────────────────────────────────────────
+    void saveRun() const;
+    bool loadRun();
+    static bool hasRunSave();
+    static void clearRunSave();
+
     // ── UI-помощники ──────────────────────────────────────────────────────
     bool button(Rectangle r, const char* label, bool enabled = true, float fontSize = 18.0f);
     void panel(Rectangle r, float alpha = 0.92f);
@@ -79,6 +87,7 @@ private:
     // Прямоугольник карты в руке; под курсором она всплывает в полный размер.
     Rectangle handCardRect(const HandLayout& L, int slot, bool hovered) const;
     float tableLineY() const { return sh_ - 176.0f; }
+    Rectangle craftPlayArea() const;
     void drawCodexEntry(int i, Rectangle r);
     void toast(const LS& t);
 
@@ -96,7 +105,7 @@ private:
     Player player_;
     Inventory inv_;
     Combat combat_;
-    TimingMiniGame mini_;
+    MiniGame mini_;
 
     int   depth_ = 1;
     int   pendingEnt_ = -1;
@@ -149,6 +158,11 @@ private:
     // звук
     unsigned hoverKey_ = 0;      // по какой кнопке уже звучало наведение
     bool  thudPlayed_ = false;   // стол уже стукнул об землю
+
+    // пауза
+    float runSaveT_ = 0.0f;   // таймер автосохранения забега
+    bool  paused_ = false;
+    void  drawPauseOverlay();
 
     // меню
     int   menuIndex_ = 0;

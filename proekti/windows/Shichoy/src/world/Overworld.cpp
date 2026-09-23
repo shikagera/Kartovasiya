@@ -37,9 +37,14 @@ void Overworld::carvePath(Rng& r, int x0, int y0, int x1, int y1) {
     }
 }
 
-void Overworld::generate(int depth, Rng& r) {
+void Overworld::generate(int depth, Rng& outer) {
+    generate(depth, uint32_t(outer.next()));
+}
+
+void Overworld::generate(int depth, uint32_t seed) {
+    Rng r(seed ? seed : 1u);
     depth_ = std::max(1, depth);
-    seed_ = uint32_t(r.next());
+    seed_ = seed;
     map_.assign(size_t(MAP_W) * MAP_H, Tile::Grass);
     ents_.clear();
     encounter_ = -1;
@@ -160,6 +165,36 @@ void Overworld::placeEntities(Rng& r) {
             ents_.push_back(e);
         }
     }
+    // Костры — редкая передышка
+    for (int i = 0; i < r.i(1, 2); ++i) {
+        WorldEnt e;
+        e.kind = EntKind::Bonfire;
+        e.seed = uint32_t(r.next());
+        if (!freeSpot(e.pos, 200.0f)) continue;
+        e.name = LS("Чей-то костёр", "Someone's Campfire");
+        ents_.push_back(e);
+    }
+    // Тайники — заперты, открываются верным приёмом
+    for (int i = 0; i < r.i(2, 3); ++i) {
+        WorldEnt e;
+        e.kind = EntKind::Cache;
+        e.data = r.i(0, 2);
+        e.seed = uint32_t(r.next());
+        if (!freeSpot(e.pos, 180.0f)) continue;
+        e.name = LS("Запертый тайник", "A Locked Cache");
+        ents_.push_back(e);
+    }
+    // Алтари — жертва ради постоянной прибавки
+    for (int i = 0; i < (depth_ >= 2 ? r.i(1, 2) : 1); ++i) {
+        WorldEnt e;
+        e.kind = EntKind::Shrine;
+        e.data = r.i(0, 2);
+        e.seed = uint32_t(r.next());
+        if (!freeSpot(e.pos, 240.0f)) continue;
+        e.name = LS("Алтарь без имени", "A Nameless Altar");
+        ents_.push_back(e);
+    }
+
     // Бродячие враги
     int enemies = 5 + depth_;
     for (int i = 0; i < enemies; ++i) {
@@ -406,6 +441,54 @@ static void drawEntity(const WorldEnt& e, float time) {
             DrawCircleLines(int(e.pos.x - 13), int(e.pos.y + 10), 7.0f, art::pal::Gold);
             DrawCircleLines(int(e.pos.x + 13), int(e.pos.y + 10), 7.0f, art::pal::Gold);
             DrawRectangle(int(e.pos.x - 8), int(e.pos.y - 12), 16, 12, withA(hex(0xFFD60A), 60));
+            break;
+        }
+        case EntKind::Bonfire: {
+            DrawEllipse(int(e.pos.x), int(e.pos.y + 8), 18, 6, Color{ 0, 0, 0, 120 });
+            for (int i = 0; i < 5; ++i) {   // поленья шалашом
+                float a = i * 1.26f;
+                DrawLineEx(Vector2{ e.pos.x + std::cos(a) * 12, e.pos.y + 6 },
+                           Vector2{ e.pos.x, e.pos.y - 10 }, 3.0f, hex(0x3A2A1C));
+            }
+            float fl = 0.7f + 0.3f * std::sin(time * 8.0f + e.pos.x);
+            DrawCircleGradient(int(e.pos.x), int(e.pos.y - 10), 40 * fl,
+                               withA(hex(0xFFBA08), 110), BLANK);
+            DrawTriangle(Vector2{ e.pos.x, e.pos.y - 12 - 20 * fl },
+                         Vector2{ e.pos.x - 8, e.pos.y + 2 },
+                         Vector2{ e.pos.x + 8, e.pos.y + 2 }, hex(0xE85D04));
+            DrawTriangle(Vector2{ e.pos.x, e.pos.y - 12 - 11 * fl },
+                         Vector2{ e.pos.x - 4, e.pos.y + 2 },
+                         Vector2{ e.pos.x + 4, e.pos.y + 2 }, hex(0xFFD60A));
+            break;
+        }
+        case EntKind::Cache: {
+            DrawEllipse(int(e.pos.x), int(e.pos.y + 11), 18, 5, Color{ 0, 0, 0, 120 });
+            DrawRectangleRounded(Rectangle{ e.pos.x - 16, e.pos.y - 10, 32, 22 }, 0.2f, 5,
+                                 hex(0x3A2A1C));
+            DrawRectangleRoundedLinesEx(Rectangle{ e.pos.x - 16, e.pos.y - 10, 32, 22 }, 0.2f, 5,
+                                        1.6f, hex(0x6C757D));
+            DrawRectangle(int(e.pos.x - 16), int(e.pos.y - 2), 32, 4, hex(0x6C757D));
+            // Замок с бьющимся светом внутри
+            float g = 0.5f + 0.5f * std::sin(time * 2.2f + e.pos.y * 0.02f);
+            DrawCircleV(Vector2{ e.pos.x, e.pos.y }, 5.0f, hex(0x1A1216));
+            DrawCircleV(Vector2{ e.pos.x, e.pos.y }, 2.6f,
+                        withA(art::pal::GoldLit, (unsigned char)(120 + 100 * g)));
+            break;
+        }
+        case EntKind::Shrine: {
+            DrawEllipse(int(e.pos.x), int(e.pos.y + 14), 22, 6, Color{ 0, 0, 0, 130 });
+            // Плита и стела
+            DrawRectangleRounded(Rectangle{ e.pos.x - 20, e.pos.y + 4, 40, 10 }, 0.3f, 5,
+                                 hex(0x3A3A46));
+            DrawTriangle(Vector2{ e.pos.x - 13, e.pos.y + 6 },
+                         Vector2{ e.pos.x, e.pos.y - 30 },
+                         Vector2{ e.pos.x + 13, e.pos.y + 6 }, hex(0x2E2E38));
+            art::drawSigil(ElementId(1 + int(e.seed % 16)),
+                           Vector2{ e.pos.x, e.pos.y - 8 }, 9.0f,
+                           withA(art::pal::GoldLit, 220), time);
+            float g = 0.5f + 0.5f * std::sin(time * 1.4f);
+            DrawCircleGradient(int(e.pos.x), int(e.pos.y - 8), 34.0f,
+                               withA(art::pal::Gold, (unsigned char)(40 + 35 * g)), BLANK);
             break;
         }
         case EntKind::Enemy: {
