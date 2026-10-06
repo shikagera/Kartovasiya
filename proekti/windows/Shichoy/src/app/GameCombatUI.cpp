@@ -870,6 +870,15 @@ void Game::debugForceScene(int which) {
             // 30..45 — экранный эффект чистой стихии, 50 — реакция Тёмный огонь
             // 60: оверворлд вплотную к бродячему врагу — чтобы на кадре была
             // видна его фигурка, иначе бродяги спавнятся далеко от старта.
+            // 61: развилка спуска, 62: бой с именным боссом
+            if (which == 61) { startRun(); rollRoutes(); scene_ = Scene::Descent; break; }
+            if (which == 62) {
+                startRun();
+                combat_.setAscension(asc_);
+                combat_.begin(&deck_, &player_, genNamedBoss(rng_, 6, 3), 6, &rng_);
+                scene_ = Scene::Combat;
+                break;
+            }
             if (which == 60) {
                 startRun();
                 for (int i = 0; i < world_.entCount(); ++i) {

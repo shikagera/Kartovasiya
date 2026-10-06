@@ -17,8 +17,19 @@ enum class Scene : int {
     Reward,
     Dialog,
     Craft,
+    Descent,       // развилка: три дороги вниз
     RunEnd,
     Codex          // справочник стихий и реакций
+};
+
+// Чем маршрут вознаграждает в конце пути.
+enum class RouteBoon : int { Relic = 0, Materials, Heal, Card, Forge, COUNT };
+
+struct RouteOffer {
+    LS name, desc;
+    int danger = 0;            // 0 тихо, 1 опасно, 2 гибельно
+    RouteBoon boon = RouteBoon::Materials;
+    Color tint = WHITE;
 };
 
 struct DialogOption {
@@ -59,6 +70,7 @@ private:
     void updateReward(float dt);    void drawReward();
     void updateDialog(float dt);    void drawDialog();
     void updateCraft(float dt);     void drawCraft();
+    void updateDescent(float dt);   void drawDescent();
     void updateRunEnd(float dt);    void drawRunEnd();
     void updateCodex(float dt);     void drawCodex();
 
@@ -68,6 +80,9 @@ private:
     void enterCombat(bool boss, int worldEntIndex);
     void afterCombat();
     void nextRegion();
+    void rollRoutes();                  // три дороги вниз
+    void takeRoute(int i);
+    Rectangle routeRect(int i) const;
     void interact(int entIndex);
     void openDialog(const LS& title, const LS& body, std::vector<DialogOption> opts, int context);
     void resolveDialog(int action);
@@ -165,6 +180,10 @@ private:
     LS    dlgTitle_, dlgBody_;
     std::vector<DialogOption> dlgOpts_;
     int   dlgContext_ = 0;
+
+    // спуск
+    RouteOffer routes_[3];
+    int   routeHover_ = -1;
 
     // крафт
     int   craftAction_ = 0;

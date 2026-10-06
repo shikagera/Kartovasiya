@@ -98,6 +98,26 @@ struct Enemy {
     float hpFrac() const { return maxHp > 0 ? float(hp) / float(maxHp) : 0.0f; }
 };
 
+// ── Именные боссы ─────────────────────────────────────────────────────────
+// Босс перестал быть «усиленным врагом»: у каждого своё имя, облик, стихия,
+// реплики на смене фаз и фирменный приём, который точно есть в последней фазе.
+struct BossDef {
+    LS name, epithet;
+    Archetype arche = Archetype::Reaper;
+    ElementId flavour = ElementId::Shadow;
+    float hpMul = 1.0f;
+    int   minDepth = 1;        // раньше этой глубины не встречается
+    LS    phase2, phase3;      // что он говорит, меняя облик
+    MoveKind sigKind = MoveKind::Heavy;
+    LS    sigName, sigTelegraph;
+    int   sigDamage = 18;
+};
+
+int bossCount();
+const BossDef& bossDef(int i);
+int  pickBossIndex(Rng& r, int depth);
+Enemy genNamedBoss(Rng& r, int depth, int index);
+
 // forcedArche / forcedFlavour — чтобы бой совпал с фигуркой на карте.
 Enemy genEnemy(Rng& r, int depth, bool boss,
                Archetype forcedArche = Archetype::COUNT,

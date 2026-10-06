@@ -37,14 +37,15 @@ void Overworld::carvePath(Rng& r, int x0, int y0, int x1, int y1) {
     }
 }
 
-void Overworld::generate(int depth, Rng& outer) {
-    generate(depth, uint32_t(outer.next()));
+void Overworld::generate(int depth, Rng& outer, int danger) {
+    generate(depth, uint32_t(outer.next()), danger);
 }
 
-void Overworld::generate(int depth, uint32_t seed) {
+void Overworld::generate(int depth, uint32_t seed, int danger) {
     Rng r(seed ? seed : 1u);
     depth_ = std::max(1, depth);
     seed_ = seed;
+    danger_ = clampi(danger, 0, 2);
     map_.assign(size_t(MAP_W) * MAP_H, Tile::Grass);
     ents_.clear();
     encounter_ = -1;
@@ -196,7 +197,7 @@ void Overworld::placeEntities(Rng& r) {
     }
 
     // Бродячие враги
-    int enemies = 5 + depth_;
+    int enemies = 5 + depth_ + danger_ * 4;
     for (int i = 0; i < enemies; ++i) {
         WorldEnt e;
         e.kind = EntKind::Enemy;

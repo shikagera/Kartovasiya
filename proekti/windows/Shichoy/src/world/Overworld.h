@@ -51,10 +51,12 @@ struct WorldTouch {         // что произошло за кадр
 
 class Overworld {
 public:
-    void generate(int depth, Rng& r);
+    // danger 0..2 — выбранный маршрут: он решает, насколько густо тут враги.
+    void generate(int depth, Rng& r, int danger = 0);
     // Регион — чистая функция от (глубина, сид): нужно для сохранения забега.
-    void generate(int depth, uint32_t seed);
+    void generate(int depth, uint32_t seed, int danger = 0);
     uint32_t seed() const { return seed_; }
+    int  danger() const { return danger_; }
     std::vector<WorldEnt>& entsMut() { return ents_; }
     const std::vector<WorldEnt>& ents() const { return ents_; }
     void update(float dt, bool inputEnabled);
@@ -98,6 +100,7 @@ private:
     Camera2D cam_{};
     int   depth_ = 1;
     uint32_t seed_ = 1;
+    int  danger_ = 0;
     int   encounter_ = -1;
     mutable float fogT_ = 0.0f;
 };

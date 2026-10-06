@@ -323,4 +323,169 @@ Enemy genEnemy(Rng& r, int depth, bool boss, Archetype forcedArche, ElementId fo
     return e;
 }
 
+
+// ── Именные боссы ─────────────────────────────────────────────────────────
+// Босс перестал быть «усиленным врагом»: у каждого своё имя, облик, стихия,
+// реплики на смене фаз и фирменный приём в последней фазе.
+static std::vector<BossDef> buildBosses() {
+    std::vector<BossDef> v;
+    v.reserve(16);
+    auto add = [&](LS n, LS ep, Archetype a, ElementId f, float hp, int minD,
+                   LS p2, LS p3, MoveKind sk, LS sn, LS st, int sd) {
+        BossDef b;
+        b.name = std::move(n); b.epithet = std::move(ep);
+        b.arche = a; b.flavour = f; b.hpMul = hp; b.minDepth = minD;
+        b.phase2 = std::move(p2); b.phase3 = std::move(p3);
+        b.sigKind = sk; b.sigName = std::move(sn); b.sigTelegraph = std::move(st);
+        b.sigDamage = sd;
+        v.push_back(std::move(b));
+    };
+
+    add(LS("Душеприказчик Вечерних Комнат", "Executor of the Evening Rooms"),
+        LS("он дочитывает завещание", "he is still reading the will"),
+        Archetype::Portrait, ElementId::Shadow, 1.00f, 1,
+        LS("Рама трещит. Он подаётся вперёд.", "The frame cracks. He leans forward."),
+        LS("Холст рвётся по шву.", "The canvas tears along the seam."),
+        MoveKind::Heavy, LS("Последняя воля", "The Last Will"),
+        LS("разворачивает бумагу", "unrolls the paper"), 22);
+
+    add(LS("Канделябр Святого Молчания", "Candelabrum of Holy Silence"),
+        LS("семь огней, ни одного слова", "seven flames, not one word"),
+        Archetype::Candelabrum, ElementId::Light, 0.92f, 1,
+        LS("Гаснет первый рожок.", "The first horn goes out."),
+        LS("Остаётся одно пламя, и оно белое.", "One flame remains, and it is white."),
+        MoveKind::Multi, LS("Семисвечие", "The Sevenfold"),
+        LS("разводит огни веером", "fans its flames apart"), 9);
+
+    add(LS("Гончая Последней Охоты", "Hound of the Last Hunt"),
+        LS("она помнит запах всех, кто бежал", "it remembers everyone who ran"),
+        Archetype::Hound, ElementId::Blood, 0.84f, 2,
+        LS("Она перестаёт кружить.", "It stops circling."),
+        LS("Шерсть на загривке встаёт дыбом.", "The hackles rise."),
+        MoveKind::Multi, LS("Загон", "The Running Down"),
+        LS("прижимается к земле", "crouches low"), 11);
+
+    add(LS("Часовщик Обратного Хода", "Clockmaker of the Reverse Stroke"),
+        LS("он чинит то, что ещё не сломалось", "he mends what is not yet broken"),
+        Archetype::Automaton, ElementId::Metal, 1.22f, 3,
+        LS("Шестерни меняют направление.", "The gears reverse."),
+        LS("Внутри что-то считает вслух.", "Something inside counts aloud."),
+        MoveKind::Sunder, LS("Обратный ход", "The Reverse Stroke"),
+        LS("заводит пружину до упора", "winds the spring to its limit"), 20);
+
+    add(LS("Хор Утонувших", "Choir of the Drowned"),
+        LS("они поют на вдохе", "they sing on the inhale"),
+        Archetype::Choir, ElementId::Water, 0.95f, 3,
+        LS("Вода поднимается до второго ряда.", "The water reaches the second row."),
+        LS("Поют уже все рты разом.", "Every mouth sings at once."),
+        MoveKind::Curse, LS("Вдох", "The Inhale"),
+        LS("набирает воздух за всех", "draws breath for all of them"), 14);
+
+    add(LS("Кукла в Подвенечном", "The Doll in Bridal White"),
+        LS("её ждали к шести", "she was expected at six"),
+        Archetype::Doll, ElementId::Poison, 1.08f, 4,
+        LS("Шов на плече расходится.", "The shoulder seam gives way."),
+        LS("Из разрыва идёт сладкий запах.", "A sweet smell comes from the tear."),
+        MoveKind::Curse, LS("Приданое", "The Dowry"),
+        LS("протягивает раскрытую ладонь", "holds out an open palm"), 13);
+
+    add(LS("Жнец Пустых Полей", "Reaper of the Empty Fields"),
+        LS("он давно сжал всё, что росло", "he reaped all that grew, long ago"),
+        Archetype::Reaper, ElementId::Earth, 1.05f, 4,
+        LS("Плащ тяжелеет от земли.", "The cloak grows heavy with soil."),
+        LS("Под капюшоном нет лица. И не было.", "There is no face under the hood. There never was."),
+        MoveKind::Heavy, LS("Жатва", "The Harvest"),
+        LS("заносит косу за спину", "draws the scythe back"), 26);
+
+    add(LS("Витражный Епископ", "The Stained-Glass Bishop"),
+        LS("свет проходит сквозь него и не греет", "light passes through him and does not warm"),
+        Archetype::Portrait, ElementId::Crystal, 1.14f, 5,
+        LS("По стеклу идёт первая трещина.", "The first crack runs through the glass."),
+        LS("Он рассыпается и собирается снова.", "He shatters and gathers himself again."),
+        MoveKind::Multi, LS("Преломление", "The Refraction"),
+        LS("поворачивается к свету", "turns toward the light"), 12);
+
+    add(LS("Громовая Псарня", "The Thunder Kennel"),
+        LS("их держали на одной цепи", "they were kept on a single chain"),
+        Archetype::Hound, ElementId::Lightning, 0.88f, 6,
+        LS("Цепь рвётся.", "The chain snaps."),
+        LS("Теперь их слышно со всех сторон.", "Now they are heard from every side."),
+        MoveKind::Multi, LS("Свора", "The Pack"),
+        LS("заходит кругом", "circles in"), 13);
+
+    add(LS("Молчаливый Нотариус", "The Silent Notary"),
+        LS("он заверяет всё, к чему прикоснулся", "he notarises all he touches"),
+        Archetype::Automaton, ElementId::Aether, 1.30f, 7,
+        LS("Печать опускается впервые.", "The seal comes down for the first time."),
+        LS("Он заверяет ваше имя.", "He notarises your name."),
+        MoveKind::Sunder, LS("Заверение", "The Notarisation"),
+        LS("поднимает печать", "raises the seal"), 24);
+
+    add(LS("Ледяная Вдова", "The Ice Widow"),
+        LS("она не сняла траур и не снимет", "she has not put off mourning and will not"),
+        Archetype::Doll, ElementId::Ice, 1.16f, 8,
+        LS("Вуаль покрывается инеем.", "The veil takes on frost."),
+        LS("В зале становится нечем дышать.", "The hall becomes hard to breathe in."),
+        MoveKind::Heavy, LS("Поминовение", "The Remembrance"),
+        LS("складывает руки на груди", "folds her hands at her breast"), 28);
+
+    add(LS("Пепельный Хорал", "The Ashen Chorale"),
+        LS("допевает за тех, кто не смог", "it finishes the song for those who could not"),
+        Archetype::Choir, ElementId::Fire, 1.25f, 10,
+        LS("Пепел поднимается со всех рядов.", "Ash lifts from every row."),
+        LS("Поют уже не рты, а пустоты.", "It is no longer mouths that sing, but hollows."),
+        MoveKind::Heavy, LS("Финал", "The Finale"),
+        LS("набирает воздух в последний раз", "draws breath one final time"), 32);
+
+    return v;
+}
+
+static const std::vector<BossDef>& bosses() {
+    static const std::vector<BossDef> b = buildBosses();
+    return b;
+}
+
+int bossCount() { return int(bosses().size()); }
+
+const BossDef& bossDef(int i) {
+    const auto& b = bosses();
+    if (i < 0 || i >= int(b.size())) return b.front();
+    return b[size_t(i)];
+}
+
+// Выбор из тех, кто уже «по глубине»: на мелководье это первые имена, глубже
+// список расширяется, так что порядок знакомства остаётся осмысленным.
+int pickBossIndex(Rng& r, int depth) {
+    std::vector<int> pool;
+    for (int i = 0; i < bossCount(); ++i)
+        if (bosses()[size_t(i)].minDepth <= depth) pool.push_back(i);
+    if (pool.empty()) return 0;
+    return pool[size_t(r.i(0, int(pool.size()) - 1))];
+}
+
+Enemy genNamedBoss(Rng& r, int depth, int index) {
+    const BossDef& d = bossDef(index);
+    // Тело строим обычным путём, затем надеваем на него личность.
+    Enemy e = genEnemy(r, depth, true, d.arche, d.flavour);
+    e.name = d.name;
+    e.epithet = d.epithet;
+    e.maxHp = std::max(1, int(e.maxHp * d.hpMul));
+    e.hp = e.maxHp;
+
+    if (e.phases.size() > 1) e.phases[1].enterLine = d.phase2;
+    if (e.phases.size() > 2) e.phases[2].enterLine = d.phase3;
+
+    // Фирменный приём кладём в последнюю фазу: бой запоминается концом.
+    if (!e.phases.empty()) {
+        EnemyMove m = makeMove(r, depth, d.sigKind, d.flavour);
+        m.name = d.sigName;
+        m.telegraph = d.sigTelegraph;
+        m.damage = d.sigDamage + depth;
+        m.fromSpot = false;
+        m.spotIndex = -1;
+        e.phases.back().moves.push_back(std::move(m));
+    }
+    return e;
+}
+
 } // namespace shichoy

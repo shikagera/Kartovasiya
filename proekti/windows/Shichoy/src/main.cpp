@@ -157,9 +157,30 @@ static int runSelftest() {
     std::printf("descent      : %d steps, x%.2f damage at the bottom\n",
                 ASCENSION_MAX, ascensionAt(ASCENSION_MAX).enemyDamage);
 
+    // ── именные боссы: имя, фазы и фирменный приём на месте ──────────────
+    bool bossOk = (bossCount() >= 12);
+    {
+        Rng br(23u);
+        for (int i = 0; i < bossCount() && bossOk; ++i) {
+            const BossDef& d = bossDef(i);
+            if (d.name.ru.empty() || d.sigName.ru.empty() || d.epithet.ru.empty()) bossOk = false;
+            Enemy e = genNamedBoss(br, std::max(1, d.minDepth), i);
+            if (e.name.ru != d.name.ru || e.phases.empty() || !e.boss) bossOk = false;
+            // Фирменный приём обязан быть в последней фазе.
+            bool sig = false;
+            for (const EnemyMove& m : e.phases.back().moves)
+                if (m.name.ru == d.sigName.ru) sig = true;
+            if (!sig) bossOk = false;
+        }
+        // Выбор по глубине не должен предлагать тех, кто ещё не по зубам.
+        for (int d = 1; d <= 12 && bossOk; ++d)
+            if (bossDef(pickBossIndex(br, d)).minDepth > d) bossOk = false;
+    }
+    std::printf("bosses       : %d named, phases and signature moves intact\n", bossCount());
+
     bool ok = (stalls == 0) && (pairs == 120) && (maxChance <= 0.7001f) && (wins > 0)
            && (losses > 0) && ladderOk && guardsOk && enchantOk
-           && relicsOk && unlockGrows && ascOk;
+           && relicsOk && unlockGrows && ascOk && bossOk;
     std::printf("result       : %s\n", ok ? "OK" : "FAILED");
     return ok ? 0 : 1;
 }
@@ -211,7 +232,7 @@ int main(int argc, char** argv) {
                                 "", "", "fx_blood.png", "", "fx_crystal.png", "fx_arcane.png",
                                 "", "", "", "", "fx_darkfire.png",
                                 "", "", "", "", "", "", "", "", "",
-                                "shot_wanderer.png" };
+                                "shot_wanderer.png", "shot_descent.png", "shot_boss.png" };
         const int nameCount = int(sizeof(names) / sizeof(names[0]));
         for (int s = 0; s < nameCount; ++s) {
             if (names[s][0] == 0) continue;

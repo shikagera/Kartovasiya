@@ -159,15 +159,10 @@ void Game::endRun(bool died) {
     scene_ = Scene::RunEnd;
 }
 
+// Спуск всегда проходит через развилку: сама глубина меняется уже в takeRoute.
 void Game::nextRegion() {
-    depth_++;
-    world_.generate(depth_, rng_);
-    scene_ = Scene::Overworld;
-    saveRun();
-    char buf[128];
-    snprintf(buf, sizeof buf, g_lang == Lang::Ru ? "Глубина %d. Земля становится темнее."
-                                                 : "Depth %d. The land grows darker.", depth_);
-    toast(LS(buf, buf));
+    rollRoutes();
+    scene_ = Scene::Descent;
 }
 
 void Game::enterCombat(bool boss, int worldEntIndex) {
@@ -797,7 +792,10 @@ void Game::updateTablePull(float dt) {
         // Ступень нисхождения добавляет врагу глубины: так он раньше получает
         // второе действие, не трогая саму генерацию.
         int fightDepth = depth_ + (pendingBoss_ ? 2 : 0) + asc_.extraAction;
-        Enemy e = genEnemy(rng_, fightDepth, pendingBoss_, wantArche, wantFlavour);
+        // Боссы теперь именные: у каждого свой облик, реплики и фирменный приём.
+        Enemy e = pendingBoss_
+                ? genNamedBoss(rng_, fightDepth, pickBossIndex(rng_, depth_))
+                : genEnemy(rng_, fightDepth, false, wantArche, wantFlavour);
         float hpMul = pendingBoss_ ? asc_.bossHp : asc_.enemyHp;
         e.maxHp = std::max(1, int(e.maxHp * hpMul));
         e.hp = e.maxHp;
@@ -1206,6 +1204,7 @@ void Game::frame() {
     // бой и подготовка к нему — напряжённый пульс.
     switch (scene_) {
         case Scene::Menu:
+        case Scene::Descent:   audio::setTrack(audio::Track::Menu); break;
         case Scene::RunEnd:    audio::setTrack(audio::Track::Menu); break;
         case Scene::TablePull:
         case Scene::Combat:
@@ -1224,6 +1223,7 @@ void Game::frame() {
         case Scene::Reward:    if (!paused_) updateReward(dt); break;
         case Scene::Dialog:    if (!paused_) updateDialog(dt); break;
         case Scene::Craft:     if (!paused_) updateCraft(dt); break;
+        case Scene::Descent:   updateDescent(dt); break;
         case Scene::RunEnd:    updateRunEnd(dt); break;
         case Scene::Codex:     updateCodex(dt); break;
     }
@@ -1237,6 +1237,7 @@ void Game::frame() {
         case Scene::Reward:    drawReward(); break;
         case Scene::Dialog:    drawDialog(); break;
         case Scene::Craft:     drawCraft(); break;
+        case Scene::Descent:   drawDescent(); break;
         case Scene::RunEnd:    drawRunEnd(); break;
         case Scene::Codex:     drawCodex(); break;
     }
@@ -1362,6 +1363,7 @@ void Game::saveRun() const {
 
     // Регион: сид плюс то, что игрок уже изменил
     b.u32(world_.seed());
+    b.i32(world_.danger());   // опасность выбранного маршрута — часть региона
     b.f32(world_.playerPos().x); b.f32(world_.playerPos().y);
     const auto& ents = world_.ents();
     b.u32(uint32_t(ents.size()));
@@ -1417,8 +1419,9 @@ bool Game::loadRun() {
     deck_.reset(std::move(lib));
 
     uint32_t seed = b.ru32();
+    int wDanger = b.ri32();
     float px = b.rf32(), py = b.rf32();
-    world_.generate(depth_, seed);                 // тот же регион из того же сида
+    world_.generate(depth_, seed, wDanger);        // тот же регион из того же сида
     world_.setPlayerPos(Vector2{ px, py });
 
     uint32_t ne = b.ru32();
@@ -1502,6 +1505,192 @@ bool Game::debugSaveRoundTrip() {
              world_.entCount(), wantEnts, world_.seed(), wantSeed);
     clearRunSave();
     return ok;
+}
+
+
+// ── Выбор спуска ──────────────────────────────────────────────────────────
+// Свободный оверворлд не давал выбора «иду в опасное ради реликвии или в
+// тихое ради лечения». Теперь спуск всегда проходит через развилку: три
+// маршрута с объявленной опасностью и объявленной наградой.
+
+static LS boonName(RouteBoon b) {
+    switch (b) {
+        case RouteBoon::Relic:     return LS("реликвия", "a relic");
+        case RouteBoon::Materials: return LS("запас материалов", "a cache of materials");
+        case RouteBoon::Heal:      return LS("отдых и лечение", "rest and healing");
+        case RouteBoon::Card:      return LS("новая карта", "a new card");
+        default:                   return LS("работа на верстаке", "work at the bench");
+    }
+}
+
+static Color dangerTint(int d) {
+    return d == 0 ? hex(0x52B788) : (d == 1 ? hex(0xF0DC8C) : hex(0x9B2226));
+}
+static LS dangerName(int d) {
+    return d == 0 ? LS("тихо", "quiet")
+         : d == 1 ? LS("опасно", "dangerous")
+                  : LS("гибельно", "deadly");
+}
+
+void Game::rollRoutes() {
+    static const LS kNames[6][2] = {
+        { LS("Низина", "The Low Ground"),      LS("Туман по пояс, под ногами мягко.", "Mist to the waist, the ground soft underfoot.") },
+        { LS("Старый тракт", "The Old Road"),  LS("По нему ещё ездят. Не все доезжают.", "It is still travelled. Not all arrive.") },
+        { LS("Горелый лес", "The Burnt Wood"), LS("Пахнет сажей, хотя не горело давно.", "It smells of soot, though nothing burned here lately.") },
+        { LS("Поля могил", "The Grave Fields"),LS("Камни стоят ровными рядами. Слишком ровными.", "The stones stand in even rows. Too even.") },
+        { LS("Каменоломня", "The Quarry"),     LS("Эхо возвращается позже, чем должно.", "The echo comes back later than it should.") },
+        { LS("Запруда", "The Millpond"),       LS("Вода стоит. В ней что-то стоит тоже.", "The water stands. Something stands in it too.") },
+    };
+
+    // Маршруты обязаны отличаться и по опасности, и по награде: иначе выбор
+    // превращается в формальность.
+    int danger[3] = { 0, 1, 2 };
+    for (int i = 2; i > 0; --i) std::swap(danger[i], danger[rng_.i(0, i)]);
+
+    // Реликвия закреплена за гибельным маршрутом, поэтому из общего пула её
+    // убираем: иначе две дороги предлагали бы одно и то же.
+    RouteBoon pool[int(RouteBoon::COUNT) - 1];
+    int pn = 0;
+    for (int i = 0; i < int(RouteBoon::COUNT); ++i)
+        if (RouteBoon(i) != RouteBoon::Relic) pool[pn++] = RouteBoon(i);
+    for (int i = pn - 1; i > 0; --i) std::swap(pool[i], pool[rng_.i(0, i)]);
+
+    int used[3] = { -1, -1, -1 };
+    for (int i = 0; i < 3; ++i) {
+        int k;
+        bool dup;
+        int guard = 0;
+        do {
+            k = rng_.i(0, 5);
+            dup = (k == used[0] || k == used[1] || k == used[2]);
+        } while (dup && ++guard < 32);
+        used[i] = k;
+
+        RouteOffer& o = routes_[i];
+        o.name = kNames[k][0];
+        o.desc = kNames[k][1];
+        o.danger = danger[i];
+        // Чем опаснее маршрут, тем весомее награда — иначе тихий путь
+        // доминировал бы всегда.
+        o.boon = (danger[i] == 2) ? RouteBoon::Relic
+               : (danger[i] == 1) ? pool[0]
+                                  : pool[1];
+        o.tint = dangerTint(danger[i]);
+    }
+    routeHover_ = -1;
+}
+
+void Game::takeRoute(int i) {
+    if (i < 0 || i > 2) return;
+    const RouteOffer o = routes_[i];
+
+    depth_++;
+    world_.generate(depth_, rng_, o.danger);
+    scene_ = Scene::Overworld;
+
+    switch (o.boon) {
+        case RouteBoon::Relic: {
+            RelicId got = rollRelic(rng_, player_.relics, meta_.unlocks);
+            if (got != RelicId::None) {
+                player_.relics.push_back(got);
+                toast(LS(std::string("Реликвия: ") + relicDef(got).name.ru,
+                         std::string("Relic: ") + relicDef(got).name.en));
+            }
+            break;
+        }
+        case RouteBoon::Materials: {
+            int n = 4 + depth_;
+            for (int k = 0; k < n; ++k) inv_.add(rng_.i(0, MATERIAL_COUNT - 1), 1);
+            toast(LS("Вы нашли запас материалов.", "You found a cache of materials."));
+            break;
+        }
+        case RouteBoon::Heal: {
+            int h = std::max(1, player_.maxHp / 3);
+            player_.hp = std::min(player_.maxHp, player_.hp + h);
+            toast(LS("Привал. Силы возвращаются.", "A halt. Strength returns."));
+            break;
+        }
+        case RouteBoon::Card: {
+            deck_.addCard(genCard(rng_, depth_));
+            toast(LS("В колоду легла новая карта.", "A new card joins your deck."));
+            break;
+        }
+        default:
+            openCraft();
+            break;
+    }
+    saveRun();
+}
+
+void Game::updateDescent(float) {
+    Vector2 m = GetMousePosition();
+    routeHover_ = -1;
+    for (int i = 0; i < 3; ++i)
+        if (CheckCollisionPointRec(m, routeRect(i))) routeHover_ = i;
+
+    if (IsKeyPressed(KEY_ONE))   takeRoute(0);
+    if (IsKeyPressed(KEY_TWO))   takeRoute(1);
+    if (IsKeyPressed(KEY_THREE)) takeRoute(2);
+    if (routeHover_ >= 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) takeRoute(routeHover_);
+}
+
+Rectangle Game::routeRect(int i) const {
+    const float w = 300.0f, h = 300.0f, gap = 34.0f;
+    float total = w * 3 + gap * 2;
+    float x0 = (sw_ - total) * 0.5f;
+    return Rectangle{ x0 + i * (w + gap), sh_ * 0.30f, w, h };
+}
+
+void Game::drawDescent() {
+    ClearBackground(art::pal::Night);
+    art::drawStarfield(sw_, sh_, time_ * 0.5f, 19u);
+    DrawCircleGradient(sw_ / 2, int(sh_ * 0.36f), sh_ * 0.6f, withA(hex(0x2A1840), 80), BLANK);
+
+    char buf[128];
+    snprintf(buf, sizeof buf, g_lang == Lang::Ru ? "СПУСК НА ГЛУБИНУ %d" : "DESCENT TO DEPTH %d",
+             depth_ + 1);
+    art::textC(buf, sw_ * 0.5f, sh_ * 0.12f, 34.0f, art::pal::GoldLit);
+    art::textC(g_lang == Lang::Ru ? "Три дороги вниз. Обратно не повернуть."
+                                  : "Three roads down. There is no turning back.",
+               sw_ * 0.5f, sh_ * 0.12f + 46.0f, 16.0f, withA(art::pal::Vellum, 200));
+
+    for (int i = 0; i < 3; ++i) {
+        const RouteOffer& o = routes_[i];
+        Rectangle r = routeRect(i);
+        bool hov = (routeHover_ == i);
+        float lift = hov ? 8.0f : 0.0f;
+        r.y -= lift;
+
+        panel(r, 0.94f);
+        DrawRectangleRoundedLinesEx(r, 0.06f, 8, hov ? 2.6f : 1.5f,
+                                    withA(o.tint, hov ? 240 : 150));
+
+        // Номер маршрута — чтобы работали клавиши 1..3
+        char idx[8]; snprintf(idx, sizeof idx, "%d", i + 1);
+        art::textC(idx, r.x + r.width * 0.5f, r.y + 14.0f, 18.0f, withA(o.tint, 220));
+
+        art::textC(o.name.c_str(), r.x + r.width * 0.5f, r.y + 44.0f, 24.0f, art::pal::GoldLit);
+        art::textWrapped(o.desc.c_str(),
+                         Rectangle{ r.x + 20, r.y + 84, r.width - 40, 70 },
+                         15.0f, withA(art::pal::Vellum, 215));
+
+        // Опасность: три метки, залитые по уровню
+        float cx = r.x + r.width * 0.5f;
+        for (int k = 0; k < 3; ++k) {
+            Vector2 p{ cx - 26.0f + k * 26.0f, r.y + 176.0f };
+            if (k <= o.danger) DrawPoly(p, 6, 9.0f, 0.0f, o.tint);
+            else               DrawPolyLines(p, 6, 9.0f, 0.0f, withA(art::pal::Bone, 90));
+        }
+        art::textC(dangerName(o.danger).c_str(), cx, r.y + 194.0f, 15.0f, o.tint);
+
+        DrawLineEx(Vector2{ r.x + 28, r.y + 226 }, Vector2{ r.x + r.width - 28, r.y + 226 },
+                   1.0f, withA(art::pal::Gold, 90));
+        art::textC(g_lang == Lang::Ru ? "В конце пути:" : "At the road's end:",
+                   cx, r.y + 238.0f, 14.0f, withA(art::pal::Vellum, 170));
+        art::textC(boonName(o.boon).c_str(), cx, r.y + 258.0f, 19.0f, art::pal::GoldLit);
+    }
+
+    art::drawVignette(sw_, sh_, 0.9f);
 }
 
 } // namespace shichoy
