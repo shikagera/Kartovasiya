@@ -18,7 +18,8 @@ int Inventory::total() const {
     return s;
 }
 
-CraftPlan makePlan(CraftAction a, int depth, const Deck& deck, int targetCard, Rng& r) {
+CraftPlan makePlan(CraftAction a, int depth, const Deck& deck, int targetCard, Rng& r,
+                   float cap) {
     CraftPlan p;
     p.action = a;
     p.targetCard = targetCard;
@@ -68,7 +69,7 @@ CraftPlan makePlan(CraftAction a, int depth, const Deck& deck, int targetCard, R
     }
     // Глубже — сложнее, но потолок всё равно 70%. Сжигание — вне этого правила.
     if (a != CraftAction::Burn)
-        p.chance = clampf(p.chance + depth * 0.01f, 0.20f, CRAFT_CHANCE_CAP);
+        p.chance = clampf(p.chance + depth * 0.01f, 0.20f, cap);
     (void)deck;
     return p;
 }

@@ -3,11 +3,15 @@
 #include "combat/Enemy.h"
 #include "core/Biome.h"
 #include "core/Relics.h"
+#include "core/Ascension.h"
 
 namespace shichoy {
 
 struct Player {
     int hp = 60, maxHp = 60;
+    // Максимум без реликвий: от него каждый бой пересчитывает прибавки,
+    // иначе набранные за забег реликвии накапливали бы здоровье повторно.
+    int baseMaxHp = 60;
     int shield = 0;
     int baseCardLimit = 5;   // сколько карт можно сыграть за ход
     int drawPerTurn = 5;     // добор в начале хода; размер руки не ограничен
@@ -72,6 +76,8 @@ public:
     void cycleTarget(int dir);
     void setTarget(int spotIndex) { target_ = spotIndex; }
     void setBiome(Biome b) { biome_ = b; }
+    void setAscension(const Ascension& a) { asc_ = a; }
+    const Ascension& ascension() const { return asc_; }
     Biome biome() const { return biome_; }
 
     // ── состояние для отрисовки ───────────────────────────────────────────
@@ -116,8 +122,11 @@ private:
     void startPlayerTurn();
     void runEnemyTurn();
     void tickStatusesEndOfRound();
-    int  dealDamageToEnemy(int dmg, bool precise, Color col);
+    // catMul — множитель категории карты (стихия/заклинание/реакция/слияние).
+    int  dealDamageToEnemy(int dmg, bool precise, Color col, float catMul = 1.0f);
     void damagePlayer(int dmg, const LS& src);
+    // Всё лечение игрока идёт сюда: ступень нисхождения режет его целиком.
+    int  healPlayer(int amount);
     void applyReaction(const ReactionDef& rc, const Card& card);
     void resolveElement(const Card& c);
     void resolveCompound(const Card& c);
@@ -147,9 +156,11 @@ private:
     ElementId mark_ = ElementId::None;
     int   markTurns_ = 0;
     Biome biome_ = Biome::Meadow;   // где принят бой
+    Ascension asc_;                 // правила выбранной ступени нисхождения
     bool  ultimaUsed_ = false;
     bool  undyingUsed_ = false;  // Восковой двойник — раз за бой
     bool  firstCardTurn_ = true; // Право первой руки
+    bool  coldOpen_ = false;     // враг пропускает первый ход
     float ampBonus_ = 0.0f;      // от карт Amplify
     float timer_ = 0.0f;
     float shake_ = 0.0f;

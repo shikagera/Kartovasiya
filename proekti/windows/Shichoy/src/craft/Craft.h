@@ -31,7 +31,9 @@ struct CraftPlan {
     LS desc;
 };
 
-CraftPlan makePlan(CraftAction a, int depth, const Deck& deck, int targetCard, Rng& r);
+// cap — потолок шанса: его опускают ступени нисхождения.
+CraftPlan makePlan(CraftAction a, int depth, const Deck& deck, int targetCard, Rng& r,
+                   float cap = 0.70f);
 
 // ── Timing mini-game / Мини-игра на тайминг ───────────────────────────────
 // Полоса, по которой бегает маркер. Зона успеха = chance (максимум 70%),

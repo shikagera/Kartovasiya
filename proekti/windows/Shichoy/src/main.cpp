@@ -118,8 +118,48 @@ static int runSelftest() {
     std::printf("element pairs: %d / 120 resolve\n", pairs);
     std::printf("deck size    : %d cards after crafting\n", int(deck.library().size()));
 
+    // ── реликвии: каждая описана, запертые не выпадают без своего бита ───
+    bool relicsOk = (relicCount() == int(RelicId::COUNT) - 1);
+    for (int i = 1; i < int(RelicId::COUNT) && relicsOk; ++i) {
+        const RelicDef& d = relicDef(RelicId(i));
+        if (d.id != RelicId(i) || d.name.ru.empty() || d.desc.ru.empty()) relicsOk = false;
+    }
+    int poolLocked = 0, poolOpen = 0;
+    {
+        Rng rr(11u); std::vector<RelicId> owned;
+        for (;;) {
+            RelicId got = rollRelic(rr, owned, 0u);
+            if (got == RelicId::None || poolLocked > 300) break;
+            if (relicDef(got).unlock >= 0) { relicsOk = false; break; }
+            owned.push_back(got); poolLocked++;
+        }
+    }
+    {
+        Rng rr(11u); std::vector<RelicId> owned;
+        for (;;) {
+            RelicId got = rollRelic(rr, owned, ~0u);
+            if (got == RelicId::None || poolOpen > 300) break;
+            owned.push_back(got); poolOpen++;
+        }
+    }
+    bool unlockGrows = poolOpen > poolLocked;
+    std::printf("relics       : %d described, pool %d locked -> %d open\n",
+                relicCount(), poolLocked, poolOpen);
+
+    // ── нисхождение: лестница монотонна, у каждой ступени есть правило ────
+    bool ascOk = true;
+    for (int i = 1; i <= ASCENSION_MAX; ++i) {
+        Ascension a = ascensionAt(i), b = ascensionAt(i - 1);
+        if (a.enemyDamage < b.enemyDamage - 0.001f) ascOk = false;
+        if (a.rewardMul   > b.rewardMul   + 0.001f) ascOk = false;
+        if (ascensionRule(i).ru.empty()) ascOk = false;
+    }
+    std::printf("descent      : %d steps, x%.2f damage at the bottom\n",
+                ASCENSION_MAX, ascensionAt(ASCENSION_MAX).enemyDamage);
+
     bool ok = (stalls == 0) && (pairs == 120) && (maxChance <= 0.7001f) && (wins > 0)
-           && (losses > 0) && ladderOk && guardsOk && enchantOk;
+           && (losses > 0) && ladderOk && guardsOk && enchantOk
+           && relicsOk && unlockGrows && ascOk;
     std::printf("result       : %s\n", ok ? "OK" : "FAILED");
     return ok ? 0 : 1;
 }

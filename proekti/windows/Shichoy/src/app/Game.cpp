@@ -103,8 +103,13 @@ void Game::shutdown() {
 void Game::startRun() {
     depth_ = 1;
     diedLastRun_ = false;
+    // Ступень нисхождения фиксируется на весь забег: менять её по ходу нельзя.
+    asc_ = ascensionAt(meta_.ascension);
     player_ = Player{};
-    player_.maxHp = 60 + meta_.permHp;
+    player_.baseMaxHp = std::max(20, 60 + meta_.permHp + asc_.startHp);
+    player_.maxHp = player_.baseMaxHp;
+    player_.baseCardLimit = std::max(2, player_.baseCardLimit + asc_.cardLimit);
+    player_.drawPerTurn = std::max(2, player_.drawPerTurn + asc_.drawPerTurn);
     player_.hp = player_.maxHp;
     inv_ = Inventory{};
     deck_.reset(starterDeck(rng_));
@@ -117,10 +122,29 @@ void Game::startRun() {
              "Run started. WASD to move, E to interact."));
 }
 
+// Разблокировки: веха ставит бит, бит открывает пласт реликвий. Это и есть
+// причина начать следующий забег — пул в нём будет другим.
+void Game::refreshUnlocks() {
+    auto open = [&](int bit, bool cond) { if (cond) meta_.unlocks |= (1u << unsigned(bit)); };
+    open(1, meta_.bestDepth >= 3);
+    open(2, meta_.unlockedCards >= 20);
+    open(3, meta_.bestDepth >= 5);
+    open(4, meta_.bestDepth >= 8);
+    open(5, meta_.ascensionBeaten >= 1);
+    open(6, meta_.bestDepth >= 12);
+    open(7, meta_.ascensionBeaten >= 3);
+    open(8, meta_.ascensionBeaten >= 5);
+    open(9, meta_.ascensionBeaten >= 8);
+}
+
 void Game::endRun(bool died) {
     diedLastRun_ = died;
     meta_.runs++;
     meta_.bestDepth = std::max(meta_.bestDepth, depth_);
+    // Ступень засчитывается только за живой уход с глубины от пятой: иначе
+    // лестницу можно было бы пройти, не играя.
+    if (!died && depth_ >= 5)
+        meta_.ascensionBeaten = std::max(meta_.ascensionBeaten, meta_.ascension);
     if (!died) {
         meta_.bankedMaterials += inv_.total();
         meta_.permHp += inv_.total() / 12;
@@ -129,6 +153,7 @@ void Game::endRun(bool died) {
         meta_.permHp += inv_.total() / 40;
     }
     meta_.unlockedCards = std::max(meta_.unlockedCards, int(deck_.library().size()));
+    refreshUnlocks();
     saveMeta(meta_);
     clearRunSave();
     scene_ = Scene::RunEnd;
@@ -162,7 +187,7 @@ void Game::afterCombat() {
     world_.clearEncounter();
     if (pendingBoss_) {
         // Босс всегда отдаёт реликвию — если ещё есть что отдавать.
-        RelicId got = rollRelic(rng_, player_.relics);
+        RelicId got = rollRelic(rng_, player_.relics, meta_.unlocks);
         if (got != RelicId::None) {
             player_.relics.push_back(got);
             const RelicDef& rd = relicDef(got);
@@ -187,17 +212,33 @@ void Game::afterCombat() {
 }
 
 // ── Menu ──────────────────────────────────────────────────────────────────
+// Ступень доступна, пока она не выше пройденной плюс одна: лестница
+// открывается по одной, иначе смысл в ней пропадает.
+int Game::ascensionCap() const {
+    return clampi(meta_.ascensionBeaten + 1, 0, ASCENSION_MAX);
+}
+void Game::stepAscension(int d) {
+    meta_.ascension = clampi(meta_.ascension + d, 0, ascensionCap());
+    saveMetaNow();
+    audio::play(audio::Sfx::UiClick, 0.5f, 1.1f);
+}
+
 void Game::updateMenu(float) {
-    if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S)) menuIndex_ = (menuIndex_ + 1) % 5;
-    if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W))   menuIndex_ = (menuIndex_ + 4) % 5;
+    if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S)) menuIndex_ = (menuIndex_ + 1) % 6;
+    if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W))   menuIndex_ = (menuIndex_ + 5) % 6;
+    if (menuIndex_ == 1) {
+        if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D)) stepAscension(+1);
+        if (IsKeyPressed(KEY_LEFT)  || IsKeyPressed(KEY_A)) stepAscension(-1);
+    }
     bool go = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
     if (go) {
         switch (menuIndex_) {
             case 0: startRun(); break;
-            case 1: if (hasRunSave() && loadRun()) {} break;
-            case 2: codexPage_ = 0; codexReturn_ = Scene::Menu; scene_ = Scene::Codex; break;
-            case 3: if (art::hasCyrillic()) g_lang = (g_lang == Lang::Ru ? Lang::En : Lang::Ru); break;
-            case 4: exit_ = true; break;
+            case 1: stepAscension(+1); break;
+            case 2: if (hasRunSave() && loadRun()) {} break;
+            case 3: codexPage_ = 0; codexReturn_ = Scene::Menu; scene_ = Scene::Codex; break;
+            case 4: if (art::hasCyrillic()) g_lang = (g_lang == Lang::Ru ? Lang::En : Lang::Ru); break;
+            case 5: exit_ = true; break;
         }
     }
 }
@@ -226,17 +267,22 @@ void Game::drawMenu() {
     art::textC(sub, cx, sh_ * 0.06f + 80.0f, 15.0f, withA(art::pal::Vellum, 200));
 
     const bool canContinue = hasRunSave();
-    const LS items[5] = {
+    char ascBuf[96];
+    snprintf(ascBuf, sizeof ascBuf,
+             g_lang == Lang::Ru ? "< Нисхождение: %d / %d >" : "< Descent: %d / %d >",
+             meta_.ascension, ASCENSION_MAX);
+    const LS items[6] = {
         LS("Новый забег", "New Run"),
+        LS(ascBuf, ascBuf),
         LS("Продолжить забег", "Continue Run"),
         LS("Кодекс стихий", "Codex of Elements"),
         LS("Язык: Русский / English", "Language: English / Русский"),
         LS("Выход", "Quit")
     };
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < 6; ++i) {
         Rectangle r{ cx - 170.0f, sh_ * 0.54f + i * 46.0f, 340.0f, 38.0f };
         bool sel = (menuIndex_ == i);
-        bool on = (i != 1) || canContinue;
+        bool on = (i != 2) || canContinue;
         if (sel && on)
             DrawRectangleRoundedLinesEx(Rectangle{ r.x - 6, r.y - 4, r.width + 12, r.height + 8 },
                                         0.3f, 6, 1.5f, withA(art::pal::GoldLit, 200));
@@ -244,13 +290,21 @@ void Game::drawMenu() {
             menuIndex_ = i;
             switch (i) {
                 case 0: startRun(); break;
-                case 1: loadRun(); break;
-                case 2: codexPage_ = 0; codexReturn_ = Scene::Menu; scene_ = Scene::Codex; break;
-                case 3: if (art::hasCyrillic()) g_lang = (g_lang == Lang::Ru ? Lang::En : Lang::Ru); break;
-                case 4: exit_ = true; break;
+                // По клику ступень растёт, по правому клику — падает.
+                case 1: stepAscension(IsMouseButtonReleased(MOUSE_BUTTON_RIGHT) ? -1 : +1); break;
+                case 2: loadRun(); break;
+                case 3: codexPage_ = 0; codexReturn_ = Scene::Menu; scene_ = Scene::Codex; break;
+                case 4: if (art::hasCyrillic()) g_lang = (g_lang == Lang::Ru ? Lang::En : Lang::Ru); break;
+                case 5: exit_ = true; break;
             }
         }
         if (on && CheckCollisionPointRec(GetMousePosition(), r)) menuIndex_ = i;
+    }
+
+    // Что именно добавляет выбранная ступень — видно сразу, без кодекса.
+    if (meta_.ascension > 0) {
+        art::textC(ascensionRule(meta_.ascension).c_str(), cx, sh_ - 68.0f, 15.0f,
+                   withA(art::pal::Blood, 220));
     }
 
     char buf[160];
@@ -562,7 +616,7 @@ void Game::resolveDialog(int action) {
                 int take = std::min(inv_.mats[i], cost - paid);
                 inv_.mats[i] -= take; paid += take;
             }
-            RelicId got = rollRelic(rng_, player_.relics);
+            RelicId got = rollRelic(rng_, player_.relics, meta_.unlocks);
             if (got == RelicId::None) {
                 toast(LS("У него больше ничего для вас нет.", "He has nothing left for you."));
             } else {
@@ -577,7 +631,7 @@ void Game::resolveDialog(int action) {
         case 24:
             craftAction_ = int(CraftAction::Transmute);
             craftTarget_ = -1;
-            plan_ = makePlan(CraftAction::Transmute, depth_, deck_, -1, rng_);
+            plan_ = makePlan(CraftAction::Transmute, depth_, deck_, -1, rng_, asc_.craftCap);
             planActive_ = false;
             craftResult_ = LS("", "");
             scene_ = Scene::Craft;
@@ -585,7 +639,7 @@ void Game::resolveDialog(int action) {
         case 30:                                              // событие: риск
             craftAction_ = int(CraftAction::Mutate);
             craftTarget_ = deck_.library().empty() ? -1 : rng_.i(0, int(deck_.library().size()) - 1);
-            plan_ = makePlan(CraftAction::Mutate, depth_, deck_, craftTarget_, rng_);
+            plan_ = makePlan(CraftAction::Mutate, depth_, deck_, craftTarget_, rng_, asc_.craftCap);
             for (int i = 0; i < MATERIAL_COUNT; ++i) plan_.cost[i] = 0;   // событие бесплатное
             plan_.title = LS("Событие: рискнуть", "Event: take the risk");
             planActive_ = false;
@@ -614,7 +668,7 @@ void Game::resolveDialog(int action) {
         case 51:                                              // костёр: перековка
             craftAction_ = int(CraftAction::Upgrade);
             craftTarget_ = deck_.library().empty() ? -1 : 0;
-            plan_ = makePlan(CraftAction::Upgrade, depth_, deck_, craftTarget_, rng_);
+            plan_ = makePlan(CraftAction::Upgrade, depth_, deck_, craftTarget_, rng_, asc_.craftCap);
             for (int i = 0; i < MATERIAL_COUNT; ++i) plan_.cost[i] = 0;   // платит костёр
             plan_.title = LS("Перековка в огне", "Reforging in the Flames");
             planActive_ = false;
@@ -632,7 +686,7 @@ void Game::resolveDialog(int action) {
                 which = clampi(world_.ent(pendingEnt_).data, 0, 2);
             craftAction_ = int(CraftAction::Forge);
             craftTarget_ = -1;
-            plan_ = makePlan(CraftAction::Forge, depth_ + 2, deck_, -1, rng_);
+            plan_ = makePlan(CraftAction::Forge, depth_ + 2, deck_, -1, rng_, asc_.craftCap);
             for (int i = 0; i < MATERIAL_COUNT; ++i) plan_.cost[i] = 0;
             plan_.title = LS("Вскрыть тайник", "Force the Cache");
             plan_.desc = LS("Внутри что-то есть. Сломаете замок — заберёте.",
@@ -740,9 +794,16 @@ void Game::updateTablePull(float dt) {
                 wantFlavour = we.flavour;
             }
         }
-        Enemy e = genEnemy(rng_, depth_ + (pendingBoss_ ? 2 : 0), pendingBoss_,
-                           wantArche, wantFlavour);
-        combat_.begin(&deck_, &player_, std::move(e), depth_ + (pendingBoss_ ? 2 : 0), &rng_);
+        // Ступень нисхождения добавляет врагу глубины: так он раньше получает
+        // второе действие, не трогая саму генерацию.
+        int fightDepth = depth_ + (pendingBoss_ ? 2 : 0) + asc_.extraAction;
+        Enemy e = genEnemy(rng_, fightDepth, pendingBoss_, wantArche, wantFlavour);
+        float hpMul = pendingBoss_ ? asc_.bossHp : asc_.enemyHp;
+        e.maxHp = std::max(1, int(e.maxHp * hpMul));
+        e.hp = e.maxHp;
+        if (pendingBoss_ && asc_.bossDouble) e.actions = std::max(e.actions, 2);
+        combat_.setAscension(asc_);
+        combat_.begin(&deck_, &player_, std::move(e), fightDepth, &rng_);
         // Бой наследует место, где его приняли.
         combat_.setBiome(world_.biomeAt(world_.playerPos()));
         hoverCard_ = -1;
@@ -799,7 +860,7 @@ void Game::openCraft() {
     craftScroll_ = 0;
     planActive_ = false;
     craftResult_ = LS("", "");
-    plan_ = makePlan(CraftAction::Forge, depth_, deck_, craftTarget_, rng_);
+    plan_ = makePlan(CraftAction::Forge, depth_, deck_, craftTarget_, rng_, asc_.craftCap);
     mini_.reset();
     scene_ = Scene::Craft;
 }
@@ -863,7 +924,7 @@ void Game::drawCraft() {
                                       withA(art::pal::Gold, 40));
         if (button(r, actNames[i].c_str(), !mini_.running(), 15.0f)) {
             craftAction_ = i;
-            plan_ = makePlan(CraftAction(i), depth_, deck_, craftTarget_, rng_);
+            plan_ = makePlan(CraftAction(i), depth_, deck_, craftTarget_, rng_, asc_.craftCap);
             craftResult_ = LS("", "");
         }
     }
@@ -959,7 +1020,7 @@ void Game::drawCraft() {
         art::drawCard(cards[size_t(idx)], r, over ? 1.0f : 0.0f, craftTarget_ == idx, time_);
         if (over && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !mini_.running()) {
             craftTarget_ = idx;
-            plan_ = makePlan(CraftAction(craftAction_), depth_, deck_, craftTarget_, rng_);
+            plan_ = makePlan(CraftAction(craftAction_), depth_, deck_, craftTarget_, rng_, asc_.craftCap);
         }
     }
 
@@ -1286,6 +1347,7 @@ void Game::saveRun() const {
 
     // Игрок
     b.i32(player_.hp); b.i32(player_.maxHp); b.i32(player_.shield);
+    b.i32(player_.baseMaxHp);
     b.i32(player_.baseCardLimit); b.i32(player_.drawPerTurn);
     b.u32(uint32_t(player_.statuses.size()));
     for (const auto& s : player_.statuses) { b.i32(int(s.id)); b.i32(s.stacks); b.i32(s.turns); }
@@ -1331,6 +1393,7 @@ bool Game::loadRun() {
 
     player_ = Player{};
     player_.hp = b.ri32(); player_.maxHp = b.ri32(); player_.shield = b.ri32();
+    player_.baseMaxHp = b.ri32();
     player_.baseCardLimit = b.ri32(); player_.drawPerTurn = b.ri32();
     uint32_t ns = b.ru32();
     if (ns > 64) return false;
@@ -1389,7 +1452,7 @@ namespace shichoy {
 bool Game::debugSaveRoundTrip() {
     startRun();
     depth_ = 7;
-    player_.maxHp = 123; player_.hp = 77;
+    player_.maxHp = 123; player_.hp = 77; player_.baseMaxHp = 123;
     player_.baseCardLimit = 6; player_.drawPerTurn = 7;
     player_.relics.push_back(RelicId::Alembic);
     player_.relics.push_back(RelicId::SpotHunter);

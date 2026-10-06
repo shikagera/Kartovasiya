@@ -79,7 +79,15 @@ void Combat::begin(Deck* deck, Player* player, Enemy enemy, int depth, Rng* rng)
     shake_ = 0.0f;
     reactionFlash_ = 0.0f;
     lastReaction_ = LS("", "");
-    player_->shield = 0;
+    {
+        // Прибавки к здоровью от реликвий применяются один раз за бой, к
+        // максимуму: иначе набор реликвий по ходу забега их бы удваивал.
+        const RelicMods rm = relicMods(player_->relics);
+        player_->shield = rm.startShield;
+        player_->maxHp = std::max(10, player_->baseMaxHp + rm.bonusHp);
+        player_->hp = std::min(player_->hp, player_->maxHp);
+        if (hasSpecial(player_->relics, RelicSpecial::ColdOpen)) coldOpen_ = true;
+    }
 
     deck_->beginCombat(*rng_);
     pushLog(LS(std::string("Стол разложен. Против вас — ") + enemy_.name.ru + ".",
@@ -88,14 +96,15 @@ void Combat::begin(Deck* deck, Player* player, Enemy enemy, int depth, Rng* rng)
 }
 
 void Combat::startPlayerTurn() {
-    cardLimit_ = player_->baseCardLimit + (player_->has(RelicId::ExtraSlot) ? 1 : 0);
+    const RelicMods rm = relicMods(player_->relics);
+    cardLimit_ = std::max(1, player_->baseCardLimit + rm.slots);
     cardsLeft_ = cardLimit_;
     firstCardTurn_ = true;
     state_ = CombatState::PlayerTurn;
 
     // Рука между ходами не сбрасывается: всё несыгранное остаётся лежать,
     // сверху приходит фиксированный добор. Потолка у руки нет.
-    drawHand(player_->drawPerTurn + (player_->has(RelicId::DeepDraw) ? 2 : 0));
+    drawHand(std::max(1, player_->drawPerTurn + rm.draw));
 
     if (const EnemyMove* m = enemy_.currentMove()) {
         std::string mult = enemy_.actions > 1 ? ("  x" + num(enemy_.actions)) : std::string();
@@ -140,8 +149,18 @@ float Combat::biomeMul(const Card& c) const {
 }
 
 // ── Damage / Урон ─────────────────────────────────────────────────────────
-int Combat::dealDamageToEnemy(int dmg, bool precise, Color col) {
+int Combat::dealDamageToEnemy(int dmg, bool precise, Color col, float catMul) {
     if (dmg <= 0) return 0;
+
+    // Общий множитель реликвий плюс множитель категории (стихия, заклинание,
+    // реакция, слияние) — иначе каждая новая реликвия требовала бы своей ветки.
+    {
+        const RelicMods rmods = relicMods(player_->relics);
+        float k = rmods.dmgMul * catMul;
+        if (hasSpecial(player_->relics, RelicSpecial::LastStand) &&
+            player_->hp * 3 <= player_->maxHp) k *= 2.0f;
+        dmg = std::max(1, int(dmg * k));
+    }
 
     // Размер числа — от доли снятого здоровья. Мелкий тычок и удар на треть
     // полосы не должны выглядеть одинаково: на этом держится ощущение силы.
@@ -156,7 +175,7 @@ int Combat::dealDamageToEnemy(int dmg, bool precise, Color col) {
     if (enemy_.statusStacks(StatusId::Vulnerable) > 0 || enemy_.exposed) dmg = int(dmg * 1.5f);
     int corr = enemy_.statusStacks(StatusId::Corrode);
     if (corr > 0) dmg += corr;
-    if (player_->has(RelicId::BloodPact)) dmg = int(dmg * 1.30f);
+    if (hasSpecial(player_->relics, RelicSpecial::BloodPact)) dmg = int(dmg * 1.30f);
 
     // Щит врага
     if (enemy_.guard > 0) {
@@ -171,14 +190,16 @@ int Combat::dealDamageToEnemy(int dmg, bool precise, Color col) {
     int spot = target_;
     if (spot >= 0 && spot < int(enemy_.spots.size()) && !enemy_.spots[size_t(spot)].destroyed) {
         bool focused = player_->statusStacks(StatusId::Focus) > 0
-                    || player_->has(RelicId::SpotHunter);
+                    || hasSpecial(player_->relics, RelicSpecial::SpotHunter);
         if (!precise && !focused && rng_->chance(0.22f)) {
             audio::play(audio::Sfx::Miss, 0.7f);
             pushFloat(g_lang == Lang::Ru ? "мимо" : "miss", Vector2{ 0, -20 }, hex(0x8A8A94), 18.0f);
             pushLog(LS("Удар прошёл мимо точки.", "The strike misses the weak spot."), hex(0x8A8A94));
             return 0;
         }
+        // Раскол: доля, уходящая в корпус, не теряется.
         float share = precise ? 1.0f : 0.65f;
+        if (hasSpecial(player_->relics, RelicSpecial::SpotSplit)) share = 1.0f;
         int toSpot = int(dmg * share);
         int toBody = dmg - toSpot;
         WeakSpot& ws = enemy_.spots[size_t(spot)];
@@ -243,8 +264,24 @@ void Combat::breakSpot(int index) {
     if (target_ == index) target_ = -1;
 }
 
+int Combat::healPlayer(int amount) {
+    if (amount <= 0) return 0;
+    int h = std::max(0, int(amount * asc_.healing * relicMods(player_->relics).healMul));
+    if (h <= 0) return 0;
+    int before = player_->hp;
+    player_->hp = std::min(player_->maxHp, player_->hp + h);
+    return player_->hp - before;
+}
+
 void Combat::damagePlayer(int dmg, const LS& src) {
     if (dmg <= 0) return;
+    const RelicMods rm = relicMods(player_->relics);
+    dmg = int(dmg * asc_.enemyDamage * rm.takenMul);
+    // Шипы отвечают до поглощения щитом: иначе они молчали бы весь бой.
+    if (rm.thorns > 0 && enemy_.alive()) {
+        enemy_.hp -= rm.thorns;
+        pushFloat("-" + num(rm.thorns), Vector2{ 40, -60 }, hex(0x9B2226), 18.0f);
+    }
     int weak = player_->statusStacks(StatusId::Weaken);
     dmg = std::max(1, dmg - weak);
     if (player_->shield > 0) {
@@ -262,7 +299,7 @@ void Combat::damagePlayer(int dmg, const LS& src) {
     pushLog(LS(std::string(src.ru) + ": -" + num(dmg) + " HP",
                std::string(src.en) + ": -" + num(dmg) + " HP"), hex(0xFF6B6B));
     // Восковой двойник: раз за бой смертельный удар оставляет с 1 HP.
-    if (player_->hp <= 0 && player_->has(RelicId::Undying) && !undyingUsed_) {
+    if (player_->hp <= 0 && hasSpecial(player_->relics, RelicSpecial::Undying) && !undyingUsed_) {
         undyingUsed_ = true;
         player_->hp = 1;
         audio::play(audio::Sfx::Heal, 1.0f, 0.7f);
@@ -279,6 +316,8 @@ void Combat::damagePlayer(int dmg, const LS& src) {
 
 // ── Reactions ─────────────────────────────────────────────────────────────
 void Combat::applyReaction(const ReactionDef& rc, const Card& card) {
+    const RelicMods rm = relicMods(player_->relics);
+
     float amp = (1.0f + ampBonus_) * biomeMul(card);
     ampBonus_ = 0.0f;
 
@@ -292,13 +331,13 @@ void Combat::applyReaction(const ReactionDef& rc, const Card& card) {
                std::string("Reaction: ") + rc.name.en + " — " + rc.desc.en), rc.tint);
 
     // Эхо в пустой зале: реакция срабатывает дважды, по 60% каждая.
-    if (player_->has(RelicId::ReactionEcho)) {
+    if (hasSpecial(player_->relics, RelicSpecial::ReactionEcho)) {
         int half = std::max(1, int(dmg * 0.6f));
-        dealDamageToEnemy(half, has(card.flags, CardFlags::Precise), rc.tint);
-        if (enemy_.alive()) dealDamageToEnemy(half, has(card.flags, CardFlags::Precise), rc.tint);
+        dealDamageToEnemy(half, has(card.flags, CardFlags::Precise), rc.tint, rm.reactionMul);
+        if (enemy_.alive()) dealDamageToEnemy(half, has(card.flags, CardFlags::Precise), rc.tint, rm.reactionMul);
         pushLog(LS("Эхо повторяет реакцию.", "The echo repeats the reaction."), hex(0x9D4EDD));
     } else {
-        dealDamageToEnemy(dmg, has(card.flags, CardFlags::Precise), rc.tint);
+        dealDamageToEnemy(dmg, has(card.flags, CardFlags::Precise), rc.tint, rm.reactionMul);
     }
 
     if (rc.applies != StatusId::None) {
@@ -306,8 +345,7 @@ void Combat::applyReaction(const ReactionDef& rc, const Card& card) {
         else                                enemy_.addStatus(rc.applies, rc.statusStacks, rc.statusTurns);
     }
     if (rc.kind == ReactionKind::Drain) {
-        int heal = std::max(1, dmg / 3);
-        player_->hp = std::min(player_->maxHp, player_->hp + heal);
+        int heal = healPlayer(std::max(1, dmg / 3));
         pushLog(LS("Вы вытянули " + num(heal) + " HP.", "You drain " + num(heal) + " HP."), hex(0x95D5B2));
     }
     if (rc.kind == ReactionKind::Risky && rng_->chance(rc.risk)) {
@@ -323,6 +361,8 @@ void Combat::applyReaction(const ReactionDef& rc, const Card& card) {
 // ── Card resolution / Разрешение карт ─────────────────────────────────────
 // Составная карта не вешает метку — она разряжается вся сразу.
 void Combat::resolveCompound(const Card& c) {
+    const RelicMods rm = relicMods(player_->relics);
+
     float amp = (1.0f + ampBonus_) * biomeMul(c); ampBonus_ = 0.0f;
     const int rank = tierRank(c.tier);
     const float mult = tierMult(c.tier);
@@ -365,14 +405,14 @@ void Combat::resolveCompound(const Card& c) {
     int saved = target_;
     if (rank >= 3) {
         target_ = -1;
-        dealDamageToEnemy(dmg, true, tint);
+        dealDamageToEnemy(dmg, true, tint, rm.mergeMul);
         for (int i = 0; i < int(enemy_.spots.size()) && enemy_.alive(); ++i) {
             if (enemy_.spots[size_t(i)].destroyed) continue;
             target_ = i;
-            dealDamageToEnemy(dmg / 2, true, tint);
+            dealDamageToEnemy(dmg / 2, true, tint, rm.mergeMul);
         }
     } else {
-        dealDamageToEnemy(dmg, has(c.flags, CardFlags::Precise), tint);
+        dealDamageToEnemy(dmg, has(c.flags, CardFlags::Precise), tint, rm.mergeMul);
     }
     target_ = saved;
 
@@ -386,6 +426,8 @@ void Combat::resolveCompound(const Card& c) {
 }
 
 void Combat::resolveElement(const Card& c) {
+    const RelicMods rm = relicMods(player_->relics);
+
     if (c.tier != MergeTier::Base) { resolveCompound(c); return; }
     ElementId e = c.element;
     // Дикая карта подстраивается: берёт противоположность текущей метки,
@@ -403,8 +445,8 @@ void Combat::resolveElement(const Card& c) {
     // Ставим метку
     float amp = (1.0f + ampBonus_) * biomeMul(c); ampBonus_ = 0.0f;
     mark_ = e;
-    markTurns_ = 3;
-    dealDamageToEnemy(int(c.power * amp), has(c.flags, CardFlags::Precise), elem(e).primary);
+    markTurns_ = std::max(1, 3 + asc_.markTurns + relicMods(player_->relics).markTurns);
+    dealDamageToEnemy(int(c.power * amp), has(c.flags, CardFlags::Precise), elem(e).primary, rm.elemMul);
     pushFx(e, ElementId::None, elem(e).primary, 1.0f, false);
     enemy_.addStatus(elem(e).mark, 1 + depth_ / 4, 2);
     pushLog(LS(std::string("Метка: ") + elem(e).name.ru, std::string("Mark: ") + elem(e).name.en),
@@ -412,6 +454,8 @@ void Combat::resolveElement(const Card& c) {
 }
 
 void Combat::resolveSpell(const Card& c) {
+    const RelicMods rm = relicMods(player_->relics);
+
     float amp = (1.0f + ampBonus_) * biomeMul(c);
     if (c.element != ElementId::None)
         pushFx(c.element, c.chain.size() > 1 ? c.chain[1] : ElementId::None,
@@ -422,7 +466,7 @@ void Combat::resolveSpell(const Card& c) {
     switch (c.spell) {
         case SpellEffect::Damage:
             ampBonus_ = 0.0f;
-            dealDamageToEnemy(int(c.power * amp), precise, col);
+            dealDamageToEnemy(int(c.power * amp), precise, col, rm.spellMul);
             break;
         case SpellEffect::Pierce:
             ampBonus_ = 0.0f;
@@ -431,27 +475,26 @@ void Combat::resolveSpell(const Card& c) {
                 for (int i = 0; i < int(enemy_.spots.size()); ++i)
                     if (!enemy_.spots[size_t(i)].destroyed) { target_ = i; break; }
             }
-            dealDamageToEnemy(int(c.power * amp), true, hex(0xF0DC8C));
+            dealDamageToEnemy(int(c.power * amp), true, hex(0xF0DC8C), rm.spellMul);
             break;
         case SpellEffect::Volley: {
             ampBonus_ = 0.0f;
             for (int i = 0; i < c.amount; ++i)
-                dealDamageToEnemy(int(c.power * amp), precise, col);
+                dealDamageToEnemy(int(c.power * amp), precise, col, rm.spellMul);
             break;
         }
         case SpellEffect::Drain: {
             ampBonus_ = 0.0f;
-            dealDamageToEnemy(int(c.power * amp), precise, hex(0x9B2226));
-            int heal = c.amount;
-            player_->hp = std::min(player_->maxHp, player_->hp + heal);
+            dealDamageToEnemy(int(c.power * amp), precise, hex(0x9B2226), rm.spellMul);
+            int heal = healPlayer(c.amount);
             pushLog(LS("Вытянуто " + num(heal) + " HP.", "Drained " + num(heal) + " HP."), hex(0x95D5B2));
             break;
         }
         case SpellEffect::Heal:
             audio::play(audio::Sfx::Heal, 0.85f);
-            player_->hp = std::min(player_->maxHp, player_->hp + c.power);
-            pushLog(LS("Восстановлено " + num(c.power) + " HP.", "Restored " + num(c.power) + " HP."),
-                    hex(0x95D5B2));
+            { int hl = healPlayer(c.power);
+            pushLog(LS("Восстановлено " + num(hl) + " HP.", "Restored " + num(hl) + " HP."),
+                    hex(0x95D5B2)); }
             break;
         case SpellEffect::Amplify:
             ampBonus_ += c.amount * 0.1f;
@@ -463,12 +506,12 @@ void Combat::resolveSpell(const Card& c) {
                 Color mc = elem(mark_).primary;
                 pushLog(LS(std::string("Подрыв метки: ") + elem(mark_).name.ru,
                            std::string("Mark detonated: ") + elem(mark_).name.en), mc);
-                dealDamageToEnemy(int(c.power * 1.6f * amp), precise, mc);
+                dealDamageToEnemy(int(c.power * 1.6f * amp), precise, mc, rm.spellMul);
                 enemy_.addStatus(elem(mark_).mark, 2, 2);
                 mark_ = ElementId::None;
                 markTurns_ = 0;
             } else {
-                dealDamageToEnemy(int(c.power * amp), precise, col);
+                dealDamageToEnemy(int(c.power * amp), precise, col, rm.spellMul);
             }
             break;
         }
@@ -539,12 +582,12 @@ void Combat::playCard(int handIndex) {
     hand_.erase(hand_.begin() + handIndex);
 
     // Право первой руки: первая карта за ход не тратит слот.
-    bool freeCard = firstCardTurn_ && player_->has(RelicId::FirstFree);
+    bool freeCard = firstCardTurn_ && hasSpecial(player_->relics, RelicSpecial::FirstFree);
     firstCardTurn_ = false;
     if (!freeCard) cardsLeft_ -= c.cost;
 
     // Кровный вексель: каждая карта оплачивается кровью.
-    if (player_->has(RelicId::BloodPact)) {
+    if (hasSpecial(player_->relics, RelicSpecial::BloodPact)) {
         player_->hp = std::max(1, player_->hp - 2);
         pushFloat("-2", Vector2{ -160, 90 }, hex(0x9B2226), 18.0f);
     }
@@ -618,6 +661,12 @@ void Combat::endTurn() {
 
 void Combat::flee() {
     if (state_ == CombatState::Won || state_ == CombatState::Lost) return;
+    if (asc_.noFlee) {
+        pushLog(LS("На этой ступени стол не складывают.",
+                   "At this depth of descent the table is not folded."), hex(0x9B2226));
+        audio::play(audio::Sfx::UiBack, 0.7f);
+        return;
+    }
     state_ = CombatState::Fled;
     discardHand();
     pushLog(LS("Вы складываете стол и уходите.", "You fold the table and walk away."), hex(0xC9B78E));
@@ -625,6 +674,12 @@ void Combat::flee() {
 
 // ── Enemy turn ────────────────────────────────────────────────────────────
 void Combat::runEnemyTurn() {
+    if (coldOpen_) {
+        coldOpen_ = false;
+        pushLog(LS("В зале слишком холодно — оно медлит.",
+                   "The hall is too cold — it hesitates."), hex(0x90E0EF));
+        return;
+    }
     if (!enemy_.alive()) { onVictory(); return; }
 
     if (enemy_.statusStacks(StatusId::Freeze) > 0) {
@@ -687,6 +742,8 @@ void Combat::runEnemyTurn() {
 }
 
 void Combat::tickStatusesEndOfRound() {
+    if (int rg = relicMods(player_->relics).regen; rg > 0 && player_->alive())
+        healPlayer(rg);
     // Враг: DoT
     int burn = enemy_.statusStacks(StatusId::Burn);
     int bleed = enemy_.statusStacks(StatusId::Bleed);
@@ -708,14 +765,14 @@ void Combat::tickStatusesEndOfRound() {
     if (ppois > 0)  damagePlayer(ppois,  LS("Яд", "Poison"));
     int regen = player_->statusStacks(StatusId::Regen);
     if (regen > 0 && player_->alive()) {
-        player_->hp = std::min(player_->maxHp, player_->hp + regen);
+        healPlayer(regen);
         pushLog(LS("Регенерация: +" + num(regen) + " HP", "Regen: +" + num(regen) + " HP"), hex(0x95D5B2));
     }
     for (auto& s : player_->statuses) if (s.turns > 0) s.turns--;
     player_->statuses.erase(std::remove_if(player_->statuses.begin(), player_->statuses.end(),
         [](const StatusInst& s) { return s.turns == 0; }), player_->statuses.end());
 
-    if (!player_->has(RelicId::LingeringMark) && markTurns_ > 0 && --markTurns_ == 0)
+    if (!hasSpecial(player_->relics, RelicSpecial::LingeringMark) && markTurns_ > 0 && --markTurns_ == 0)
         mark_ = ElementId::None;
 
     if (enemy_.hp <= 0) { onVictory(); return; }
@@ -733,7 +790,7 @@ void Combat::onVictory() {
     enemy_.hp = 0;
 
     // Алембик: лучшая составная карта из руки уходит в колоду насовсем.
-    if (player_->has(RelicId::Alembic)) {
+    if (hasSpecial(player_->relics, RelicSpecial::Alembic)) {
         int best = -1, bestRank = 0;
         for (int i = 0; i < int(hand_.size()); ++i) {
             int rk = tierRank(hand_[size_t(i)].tier);
@@ -748,7 +805,7 @@ void Combat::onVictory() {
         }
     }
     // Скупая ладонь: одна случайная карта из руки остаётся в колоде.
-    if (player_->has(RelicId::Hoarder) && !hand_.empty()) {
+    if (hasSpecial(player_->relics, RelicSpecial::Hoarder) && !hand_.empty()) {
         int i = rng_->i(0, int(hand_.size()) - 1);
         deck_->addCard(hand_[size_t(i)]);
         pushLog(LS(std::string("Скупая ладонь удерживает: ") + hand_[size_t(i)].name.ru,
@@ -761,7 +818,8 @@ void Combat::onVictory() {
 
     // Материалы: тема врага + бонус за разрушенные точки и боссов.
     int rolls = 2 + depth_ / 3 + (enemy_.boss ? 3 : 0);
-    int spotBonus = player_->has(RelicId::Gravedigger) ? 2 : 1;   // Лопата могильщика
+    rolls = std::max(1, int(rolls * asc_.rewardMul)) + relicMods(player_->relics).rewardRolls;
+    int spotBonus = hasSpecial(player_->relics, RelicSpecial::Gravedigger) ? 2 : 1;   // Лопата могильщика
     for (const auto& s : enemy_.spots) if (s.destroyed) rolls += spotBonus;
     for (int i = 0; i < rolls; ++i) {
         int m = rng_->i(0, MATERIAL_COUNT - 1);

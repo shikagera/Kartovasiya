@@ -4,6 +4,7 @@
 #include "combat/Combat.h"
 #include "craft/Craft.h"
 #include "art/Vfx.h"
+#include "core/Ascension.h"
 #include "core/Save.h"
 
 namespace shichoy {
@@ -89,6 +90,9 @@ private:
     // Крюк игры — растущие числа, и увидеть его надо в первую минуту.
     void drawTutorial();
     void saveMetaNow();          // мета живёт в своём файле, пишем по месту
+    int  ascensionCap() const;   // максимум доступной ступени
+    void stepAscension(int d);
+    void refreshUnlocks();       // вехи открывают пласты реликвий
     int   tutorStep_ = -1;       // -1 — обучение выключено
     float tutorT_ = 0.0f;
     // Раскладка руки: карты ужимаются и наезжают друг на друга по мере роста.
@@ -113,6 +117,7 @@ private:
 
     Rng   rng_{ 0xA11CE };
     MetaProgress meta_;
+    Ascension    asc_;           // правила текущей ступени нисхождения
 
     Overworld world_;
     Deck   deck_;
