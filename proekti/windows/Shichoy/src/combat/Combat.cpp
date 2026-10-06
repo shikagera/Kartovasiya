@@ -34,6 +34,18 @@ Vector2 spotScreenPos(const Enemy& e, int index, Vector2 center, float size) {
 // ── Helpers ───────────────────────────────────────────────────────────────
 static std::string num(int v) { char b[24]; snprintf(b, sizeof b, "%d", v); return b; }
 
+int Combat::intentHits() const {
+    const EnemyMove* m = enemy_.currentMove();
+    return m ? m->hits * std::max(1, enemy_.actions) : 0;
+}
+int Combat::intentDamage() const {
+    const EnemyMove* m = enemy_.currentMove();
+    if (!m) return 0;
+    if (m->kind == MoveKind::Guard || m->kind == MoveKind::Mend ||
+        m->kind == MoveKind::Enrage || m->kind == MoveKind::Curse) return 0;
+    return std::max(0, m->damage + enemy_.enrage);
+}
+
 void Combat::pushFloat(const std::string& s, Vector2 p, Color c, float size) {
     FloatText f;
     f.s = s; f.pos = p; f.color = c; f.maxLife = 1.1f; f.life = f.maxLife; f.size = size;
@@ -131,6 +143,13 @@ float Combat::biomeMul(const Card& c) const {
 int Combat::dealDamageToEnemy(int dmg, bool precise, Color col) {
     if (dmg <= 0) return 0;
 
+    // Размер числа — от доли снятого здоровья. Мелкий тычок и удар на треть
+    // полосы не должны выглядеть одинаково: на этом держится ощущение силы.
+    auto hitSize = [this](int d) {
+        float f = enemy_.maxHp > 0 ? float(d) / float(enemy_.maxHp) : 0.0f;
+        return 26.0f + clampf(f * 3.2f, 0.0f, 1.0f) * 40.0f;
+    };
+
     // Модификаторы: Разряд, Уязвимость, Коррозия, обнажённая цель
     int shock = enemy_.statusStacks(StatusId::Shock);
     if (shock > 0) { dmg += shock; enemy_.removeStatus(StatusId::Shock); }
@@ -165,12 +184,19 @@ int Combat::dealDamageToEnemy(int dmg, bool precise, Color col) {
         WeakSpot& ws = enemy_.spots[size_t(spot)];
         ws.hp -= toSpot;
         ws.flash = 0.4f;
-        pushFloat("-" + num(toSpot), Vector2{ 0, 0 }, col, 26.0f);
+        pushFloat("-" + num(toSpot), Vector2{ 0, 0 }, col, hitSize(toSpot));
         enemy_.hp -= toBody;
         if (ws.hp <= 0) breakSpot(spot);
     } else {
         enemy_.hp -= dmg;
-        pushFloat("-" + num(dmg), Vector2{ 0, 0 }, col, 26.0f);
+        pushFloat("-" + num(dmg), Vector2{ 0, 0 }, col, hitSize(dmg));
+    }
+
+    // Чем крупнее кусок здоровья снят, тем дольше стоит кадр и сильнее тряска.
+    float frac = enemy_.maxHp > 0 ? float(dmg) / float(enemy_.maxHp) : 0.0f;
+    if (frac > 0.10f) {
+        hitstop_ = std::min(0.20f, 0.05f + frac * 0.30f);
+        shake_ = std::max(shake_, 0.45f + frac * 0.9f);
     }
 
     audio::play(audio::Sfx::Hit, 0.55f, 0.9f + 0.2f * rng_->f());
@@ -751,6 +777,8 @@ void Combat::onVictory() {
 
 // ── Update ────────────────────────────────────────────────────────────────
 void Combat::update(float dt) {
+    // Пока держится хитстоп, не двигается ничего: в этом весь смысл паузы.
+    if (hitstop_ > 0.0f) { hitstop_ = std::max(0.0f, hitstop_ - dt); return; }
     shake_ = std::max(0.0f, shake_ - dt * 2.4f);
     reactionFlash_ = std::max(0.0f, reactionFlash_ - dt * 1.6f);
     movePlay_ = std::max(0.0f, movePlay_ - dt * 0.75f);

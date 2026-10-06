@@ -92,6 +92,13 @@ public:
     float reactionFlash() const { return reactionFlash_; }
     float screenShake() const { return shake_; }
     const LS& telegraph() const { return telegraph_; }
+    // Намерение: что враг сделает в свой ход и на сколько. Без этого бой —
+    // угадайка; с этим — расчёт, и именно это держит жанр.
+    const EnemyMove* intent() const { return enemy_.currentMove(); }
+    int   intentDamage() const;
+    int   intentHits() const;
+    // Остановка кадра на крупном ударе: сила удара ощущается паузой.
+    float hitstop() const { return hitstop_; }
     float movePlay() const { return movePlay_; }
     const EnemyMove& playedMove() const { return playedMove_; }
     int depth() const { return depth_; }
@@ -146,6 +153,7 @@ private:
     float ampBonus_ = 0.0f;      // от карт Amplify
     float timer_ = 0.0f;
     float shake_ = 0.0f;
+    float hitstop_ = 0.0f;
     float reactionFlash_ = 0.0f;
     float movePlay_ = 0.0f;      // анимация выложенной карты противника
     EnemyMove playedMove_;

@@ -26,12 +26,18 @@ struct DialogOption {
     bool enabled = true;
 };
 
+// Мета пишется сырым memcpy с проверкой размера: добавление поля сбрасывает
+// прежний файл в значения по умолчанию. Поэтому все поля вводятся разом.
 struct MetaProgress {
     int runs = 0;
     int bestDepth = 0;
     int bankedMaterials = 0;
-    int permHp = 0;          // постоянная прибавка к максимуму HP
+    int permHp = 0;              // постоянная прибавка к максимуму HP
     int unlockedCards = 0;
+    int prologueDone = 0;        // пролог показывают один раз за всё время
+    int ascension = 0;           // выбранная ступень нисхождения
+    int ascensionBeaten = 0;     // наибольшая пройденная ступень
+    unsigned unlocks = 0;        // битовая маска открытого контента
 };
 
 class Game {
@@ -78,6 +84,13 @@ private:
     void drawStatusRow(const std::vector<StatusInst>& st, float x, float y, float size);
     void drawBar(Rectangle r, float frac, Color fill, Color back, const char* label);
     void drawHandArea();
+    void drawIntent(Vector2 at);   // иконка и число намерения врага
+    // Пролог: ведёт за руку ровно до первого слияния и его розыгрыша.
+    // Крюк игры — растущие числа, и увидеть его надо в первую минуту.
+    void drawTutorial();
+    void saveMetaNow();          // мета живёт в своём файле, пишем по месту
+    int   tutorStep_ = -1;       // -1 — обучение выключено
+    float tutorT_ = 0.0f;
     // Раскладка руки: карты ужимаются и наезжают друг на друга по мере роста.
     struct HandLayout {
         float cw = 104, ch = 146, step = 110, x0 = 0, y = 0;

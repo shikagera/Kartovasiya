@@ -14,7 +14,20 @@ static float   enemyScale(int sh) { return sh / 720.0f * 1.30f; }
 
 // ── Update ────────────────────────────────────────────────────────────────
 void Game::updateCombat(float dt) {
+    // Хитстоп должен морозить весь кадр, а не только бой: если эффекты и ввод
+    // продолжают жить, паузы не чувствуется.
+    if (combat_.hitstop() > 0.0f) { combat_.update(dt); return; }
     combat_.update(dt);
+
+    // Последний шаг пролога висит несколько секунд и гаснет навсегда.
+    if (tutorStep_ >= 0) {
+        tutorT_ += dt;
+        if (tutorStep_ == 3 && tutorT_ > 4.5f) {
+            tutorStep_ = -1;
+            meta_.prologueDone = 1;
+            saveMetaNow();
+        }
+    }
 
     // Забираем события боя и превращаем их в экранные эффекты.
     for (const auto& ev : combat_.fxEvents())
@@ -102,10 +115,15 @@ void Game::updateCombat(float dt) {
                 if (dropPlay_) {
                     // Бросок над столом — розыгрыш; попали в точку — она и цель.
                     if (hoverSpot_ >= 0) combat_.setTarget(hoverSpot_);
-                    if (combat_.canPlay(dragCard_)) combat_.playCard(dragCard_);
-                    else audio::play(audio::Sfx::UiBack, 0.6f);
+                    if (combat_.canPlay(dragCard_)) {
+                        bool merged = combat_.hand()[size_t(dragCard_)].tier != MergeTier::Base;
+                        combat_.playCard(dragCard_);
+                        if (tutorStep_ == 0) { tutorStep_ = 1; tutorT_ = 0.0f; }
+                        else if (tutorStep_ == 2 && merged) { tutorStep_ = 3; tutorT_ = 0.0f; }
+                    } else audio::play(audio::Sfx::UiBack, 0.6f);
                 } else if (mergeTarget_ >= 0 && combat_.mergeInHand(dragCard_, mergeTarget_)) {
                     // Карта на карту — слияние по лестнице уровней.
+                    if (tutorStep_ == 1) { tutorStep_ = 2; tutorT_ = 0.0f; }
                 } else if (dropSlot_ >= 0) {
                     combat_.moveCardInHand(dragCard_, dropSlot_);
                     audio::play(audio::Sfx::CardDraw, 0.32f, 0.86f);
@@ -279,6 +297,148 @@ void Game::drawHandArea() {
     }
 }
 
+
+// ── Намерение врага ───────────────────────────────────────────────────────
+// Текстовый телеграф существовал, но лежал в логе — решение принимается
+// раньше, чем игрок успевает его прочитать. Иконка и точное число над телом
+// превращают бой из угадайки в расчёт.
+
+static Color intentColor(MoveKind k) {
+    switch (k) {
+        case MoveKind::Attack:  return hex(0xE05C4A);
+        case MoveKind::Heavy:   return hex(0xC01F3C);
+        case MoveKind::Multi:   return hex(0xE8873A);
+        case MoveKind::Curse:   return hex(0x9D4EDD);
+        case MoveKind::Guard:   return hex(0x4EA8DE);
+        case MoveKind::Mend:    return hex(0x52B788);
+        case MoveKind::Enrage:  return hex(0xFFBA08);
+        default:                return hex(0xD98324);   // Sunder
+    }
+}
+
+static void drawIntentIcon(MoveKind k, Vector2 c, float r, Color col) {
+    switch (k) {
+        case MoveKind::Attack: {            // клинок остриём вверх
+            DrawTriangle(Vector2{ c.x, c.y - r }, Vector2{ c.x - r * 0.34f, c.y + r * 0.2f },
+                         Vector2{ c.x + r * 0.34f, c.y + r * 0.2f }, col);
+            DrawRectangle(int(c.x - r * 0.58f), int(c.y + r * 0.2f), int(r * 1.16f), int(r * 0.22f), col);
+            DrawRectangle(int(c.x - r * 0.12f), int(c.y + r * 0.42f), int(r * 0.24f), int(r * 0.44f), col);
+            break;
+        }
+        case MoveKind::Heavy: {             // молот
+            DrawRectangle(int(c.x - r * 0.72f), int(c.y - r * 0.9f), int(r * 1.44f), int(r * 0.66f), col);
+            DrawRectangle(int(c.x - r * 0.16f), int(c.y - r * 0.24f), int(r * 0.32f), int(r * 1.1f), col);
+            break;
+        }
+        case MoveKind::Multi: {             // три клинка веером
+            for (int i = -1; i <= 1; ++i) {
+                float a = i * 0.42f;
+                Vector2 tip{ c.x + std::sin(a) * r, c.y - std::cos(a) * r };
+                DrawLineEx(Vector2{ c.x, c.y + r * 0.6f }, tip, r * 0.22f, col);
+            }
+            break;
+        }
+        case MoveKind::Curse: {             // спираль порчи
+            for (int i = 0; i < 22; ++i) {
+                float t0 = i * 0.42f;
+                float rr = r * (0.12f + t0 * 0.085f);
+                if (rr > r) break;
+                DrawCircleV(Vector2{ c.x + std::cos(t0) * rr, c.y + std::sin(t0) * rr },
+                            r * 0.14f, col);
+            }
+            break;
+        }
+        case MoveKind::Guard: {             // щит
+            DrawTriangle(Vector2{ c.x, c.y + r }, Vector2{ c.x - r * 0.8f, c.y - r * 0.2f },
+                         Vector2{ c.x + r * 0.8f, c.y - r * 0.2f }, col);
+            DrawRectangle(int(c.x - r * 0.8f), int(c.y - r * 0.86f), int(r * 1.6f), int(r * 0.68f), col);
+            break;
+        }
+        case MoveKind::Mend: {              // крест лечения
+            DrawRectangle(int(c.x - r * 0.26f), int(c.y - r * 0.86f), int(r * 0.52f), int(r * 1.72f), col);
+            DrawRectangle(int(c.x - r * 0.86f), int(c.y - r * 0.26f), int(r * 1.72f), int(r * 0.52f), col);
+            break;
+        }
+        case MoveKind::Enrage: {            // две стрелки вверх
+            for (int i = 0; i < 2; ++i) {
+                float yy = c.y + r * 0.5f - i * r * 0.72f;
+                DrawTriangle(Vector2{ c.x, yy - r * 0.5f }, Vector2{ c.x - r * 0.6f, yy + r * 0.16f },
+                             Vector2{ c.x + r * 0.6f, yy + r * 0.16f }, col);
+            }
+            break;
+        }
+        default: {                          // Sunder — расколотый щит
+            DrawTriangle(Vector2{ c.x - r * 0.12f, c.y + r }, Vector2{ c.x - r * 0.8f, c.y - r * 0.2f },
+                         Vector2{ c.x - r * 0.12f, c.y - r * 0.2f }, col);
+            DrawTriangle(Vector2{ c.x + r * 0.26f, c.y + r * 0.8f }, Vector2{ c.x + r * 0.16f, c.y - r * 0.2f },
+                         Vector2{ c.x + r * 0.8f, c.y - r * 0.2f }, col);
+            DrawRectangle(int(c.x - r * 0.8f), int(c.y - r * 0.86f), int(r * 0.6f), int(r * 0.68f), col);
+            DrawRectangle(int(c.x + r * 0.2f), int(c.y - r * 0.86f), int(r * 0.6f), int(r * 0.68f), col);
+            break;
+        }
+    }
+}
+
+void Game::drawIntent(Vector2 at) {
+    const EnemyMove* mv = combat_.intent();
+    if (!mv || combat_.enemy().hp <= 0) return;
+    if (combat_.state() != CombatState::PlayerTurn) return;
+
+    const Color col = intentColor(mv->kind);
+    const int dmg = combat_.intentDamage();
+    const int hits = combat_.intentHits();
+
+    // Текст справа от иконки: число урона, при серии — с множителем.
+    char val[48];
+    if (dmg > 0 && hits > 1) snprintf(val, sizeof val, "%d x%d", dmg, hits);
+    else if (dmg > 0)        snprintf(val, sizeof val, "%d", dmg);
+    else                     snprintf(val, sizeof val, "%s", g_lang == Lang::Ru ? "?" : "?");
+
+    const float ih = 46.0f;
+    float tw = (dmg > 0) ? art::textWidth(val, 28.0f) : 0.0f;
+    float w = 52.0f + (tw > 0 ? tw + 12.0f : 0.0f);
+    Rectangle r{ at.x - w * 0.5f, at.y - ih * 0.5f, w, ih };
+
+    float pulse = 0.5f + 0.5f * std::sin(time_ * 3.2f);
+    DrawRectangleRounded(r, 0.4f, 6, withA(hex(0x0B0910), 225));
+    DrawRectangleRoundedLinesEx(r, 0.4f, 6, 2.0f,
+                                withA(col, (unsigned char)(170 + 70 * pulse)));
+
+    drawIntentIcon(mv->kind, Vector2{ r.x + 26.0f, at.y }, 13.0f, col);
+    if (dmg > 0)
+        art::text(val, r.x + 46.0f, at.y - 14.0f, 28.0f, hex(0xF2E9DC));
+
+    // Название приёма — мелко под плашкой, для тех, кто хочет подробность.
+    art::textC(mv->name.c_str(), at.x, r.y + ih + 2.0f, 14.0f, withA(col, 210));
+}
+
+
+// ── Пролог ────────────────────────────────────────────────────────────────
+// Ведёт ровно до первого слияния и его розыгрыша. Дальше не мешает: главное,
+// чтобы игрок увидел растущее число в первую минуту, а не на третьем забеге.
+void Game::drawTutorial() {
+    if (tutorStep_ < 0) return;
+    static const LS steps[4] = {
+        LS("Перетащи карту мышью на стол — так она разыгрывается.",
+           "Drag a card onto the table with the mouse to play it."),
+        LS("Теперь брось карту прямо на другую карту в руке — они сольются.",
+           "Now drop a card onto another card in your hand — they will merge."),
+        LS("Слитая карта бьёт в разы сильнее. Разыграй её.",
+           "A merged card hits far harder. Play it."),
+        LS("Так и собирается сила: цепочка слияний ведёт к Ultima.",
+           "That is how power is built: a chain of merges leads to Ultima."),
+    };
+    const LS& t = steps[clampi(tutorStep_, 0, 3)];
+
+    float w = std::min(float(sw_) - 80.0f, art::textWidth(t.c_str(), 19.0f) + 56.0f);
+    Rectangle r{ (sw_ - w) * 0.5f, tableLineY() - 58.0f, w, 40.0f };
+    float pulse = 0.5f + 0.5f * std::sin(time_ * 3.0f);
+    DrawRectangleRounded(r, 0.4f, 6, withA(hex(0x0B0910), 232));
+    DrawRectangleRoundedLinesEx(r, 0.4f, 6, 2.0f,
+                                withA(art::pal::GoldLit, (unsigned char)(150 + 80 * pulse)));
+    art::textC(t.c_str(), sw_ * 0.5f, r.y + 11.0f, 19.0f, hex(0xF2E9DC));
+}
+
 // ── Draw ──────────────────────────────────────────────────────────────────
 void Game::drawCombat() {
     const Enemy& e = combat_.enemy();
@@ -311,6 +471,11 @@ void Game::drawCombat() {
     if (e.hp > 0)
         art::drawEnemyBody(ec, enemyScale(sh_), e.seed, e.flavour, time_, e.shake * 6.0f,
                            fl, e.phase, e.arche);
+
+    // Намерение — на своей строке под полосой здоровья. К телу его привязывать
+    // нельзя: облики сильно разной высоты, и плашка то наезжала на полосу, то
+    // уходила врагу в грудь.
+    drawIntent(Vector2{ sw_ * 0.5f + ox, 96.0f });
 
     // Уязвимые точки
     for (int i = 0; i < int(e.spots.size()); ++i) {
@@ -543,15 +708,26 @@ void Game::drawCombat() {
 
     // Рука
     drawHandArea();
+    drawTutorial();
 
     // Экранные эффекты сыгранной карты — поверх всего, по краям кадра
     fx_.draw(sw_, sh_, time_);
 
-    // Всплывающие числа
+    // Всплывающие числа: рывок в размере на появлении и тёмная обводка.
+    // Без обводки крупная цифра тонет в теле врага, без рывка не читается,
+    // что удар был сильным — а это и есть главный крюк игры.
     for (const auto& f : combat_.floats()) {
         float a = clampf(f.life / f.maxLife, 0.0f, 1.0f);
+        float k = 1.0f - a;                       // 0 на появлении, 1 к концу
+        float punch = (k < 0.12f) ? (1.0f + (0.12f - k) * 4.0f) : 1.0f;
+        float sz = f.size * punch;
         Vector2 p{ ec.x + f.pos.x, ec.y + f.pos.y };
-        art::textC(f.s.c_str(), p.x, p.y, f.size, withA(f.color, (unsigned char)(255 * a)));
+        unsigned char al = (unsigned char)(255 * clampf(a * 1.6f, 0.0f, 1.0f));
+        for (int dy = -2; dy <= 2; dy += 2)
+            for (int dx = -2; dx <= 2; dx += 2)
+                if (dx || dy)
+                    art::textC(f.s.c_str(), p.x + dx, p.y + dy, sz, withA(hex(0x06050A), al));
+        art::textC(f.s.c_str(), p.x, p.y, sz, withA(f.color, al));
     }
 
     art::drawVignette(sw_, sh_, 1.0f);

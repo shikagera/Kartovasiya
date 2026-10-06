@@ -14,6 +14,8 @@ static const char* SAVE_FILE = "shichoy_meta.bin";
 static void saveMeta(const MetaProgress& m) {
     SaveFileData(SAVE_FILE, (void*)&m, int(sizeof(MetaProgress)));
 }
+void Game::saveMetaNow() { saveMeta(meta_); }
+
 static MetaProgress loadMeta() {
     MetaProgress m{};
     if (!FileExists(SAVE_FILE)) return m;
@@ -108,6 +110,9 @@ void Game::startRun() {
     deck_.reset(starterDeck(rng_));
     world_.generate(depth_, rng_);
     scene_ = Scene::Overworld;
+    // Пролог включается один раз за всё время — в первом же бою забега.
+    tutorStep_ = meta_.prologueDone ? -1 : 0;
+    tutorT_ = 0.0f;
     toast(LS("Забег начат. WASD — идти, E — взаимодействие.",
              "Run started. WASD to move, E to interact."));
 }
