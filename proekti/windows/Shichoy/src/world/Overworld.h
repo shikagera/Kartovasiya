@@ -1,6 +1,7 @@
 // Overworld / Оверворлд: топ-даун исследование, ресурсы, NPC, руины, события.
 #pragma once
 #include "core/Biome.h"
+#include "world/Locale.h"
 #include "combat/Enemy.h"
 #include "core/Cards.h"
 
@@ -52,11 +53,13 @@ struct WorldTouch {         // что произошло за кадр
 class Overworld {
 public:
     // danger 0..2 — выбранный маршрут: он решает, насколько густо тут враги.
-    void generate(int depth, Rng& r, int danger = 0);
+    // locale — куда приехали: палитра земли, флора, заселённость.
+    void generate(int depth, Rng& r, int danger = 0, Locale loc = Locale::Forest);
     // Регион — чистая функция от (глубина, сид): нужно для сохранения забега.
-    void generate(int depth, uint32_t seed, int danger = 0);
+    void generate(int depth, uint32_t seed, int danger = 0, Locale loc = Locale::Forest);
     uint32_t seed() const { return seed_; }
     int  danger() const { return danger_; }
+    Locale locale() const { return locale_; }
     std::vector<WorldEnt>& entsMut() { return ents_; }
     const std::vector<WorldEnt>& ents() const { return ents_; }
     void update(float dt, bool inputEnabled);
@@ -101,6 +104,7 @@ private:
     int   depth_ = 1;
     uint32_t seed_ = 1;
     int  danger_ = 0;
+    Locale locale_ = Locale::Forest;
     int   encounter_ = -1;
     mutable float fogT_ = 0.0f;
 };

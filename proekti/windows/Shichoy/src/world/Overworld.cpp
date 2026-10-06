@@ -37,15 +37,16 @@ void Overworld::carvePath(Rng& r, int x0, int y0, int x1, int y1) {
     }
 }
 
-void Overworld::generate(int depth, Rng& outer, int danger) {
-    generate(depth, uint32_t(outer.next()), danger);
+void Overworld::generate(int depth, Rng& outer, int danger, Locale loc) {
+    generate(depth, uint32_t(outer.next()), danger, loc);
 }
 
-void Overworld::generate(int depth, uint32_t seed, int danger) {
+void Overworld::generate(int depth, uint32_t seed, int danger, Locale loc) {
     Rng r(seed ? seed : 1u);
     depth_ = std::max(1, depth);
     seed_ = seed;
     danger_ = clampi(danger, 0, 2);
+    locale_ = loc;
     map_.assign(size_t(MAP_W) * MAP_H, Tile::Grass);
     ents_.clear();
     encounter_ = -1;
@@ -156,12 +157,15 @@ void Overworld::placeEntities(Rng& r) {
         e.name = LS("Руины поместья", "Manor Ruins");
         ents_.push_back(e);
     }
-    // Карета — выход из забега
+    // Карета — выход из забега, а в усадьбе ещё и выезд на развилку.
+    // Поэтому там она обязана появиться: иначе из дома не уехать.
     {
         WorldEnt e;
         e.kind = EntKind::Carriage;
         e.seed = uint32_t(r.next());
-        if (freeSpot(e.pos, 260.0f)) {
+        bool must = localeDef(locale_).peaceful;
+        if (freeSpot(e.pos, must ? 90.0f : 260.0f) || must) {
+            if (must) e.pos = Vector2{ player_.x + 120.0f, player_.y + 40.0f };
             e.name = LS("Ваша карета", "Your Carriage");
             ents_.push_back(e);
         }
@@ -197,7 +201,7 @@ void Overworld::placeEntities(Rng& r) {
     }
 
     // Бродячие враги
-    int enemies = 5 + depth_ + danger_ * 4;
+    int enemies = localeDef(locale_).peaceful ? 0 : (5 + depth_ + danger_ * 4);
     for (int i = 0; i < enemies; ++i) {
         WorldEnt e;
         e.kind = EntKind::Enemy;
@@ -315,29 +319,32 @@ void Overworld::update(float dt, bool inputEnabled) {
 // свет, а детали (трава, камешки, корни, кости) раскиданы независимо от
 // сетки, так что границы клеток не читаются.
 
-static Color tileBase(Tile t) {
+// Палитра земли принадлежит местности: один и тот же тайл в снежнике и в
+// джунглях должен быть разным цветом, иначе путешествие не читается.
+static Color tileBase(Tile t, Locale loc) {
+    const LocaleDef& L = localeDef(loc);
     switch (t) {
-        case Tile::Grass:     return hex(0x4E7A3A);
-        case Tile::DarkGrass: return hex(0x33522C);
-        case Tile::Path:      return hex(0x8A6A42);
-        case Tile::Mud:       return hex(0x5E452A);
-        case Tile::Water:     return hex(0x2A5A86);
-        case Tile::Rock:      return hex(0x6A6A74);
-        case Tile::Tree:      return hex(0x3A5E2E);
-        case Tile::Bramble:   return hex(0x4A4028);
-        case Tile::Grave:     return hex(0x535660);
-        case Tile::Flagstone: return hex(0x3A3A44);
+        case Tile::Grass:     return L.grass;
+        case Tile::DarkGrass: return L.darkGrass;
+        case Tile::Path:      return L.path;
+        case Tile::Mud:       return L.mud;
+        case Tile::Water:     return L.water;
+        case Tile::Rock:      return L.rock;
+        case Tile::Tree:      return L.tree;
+        case Tile::Bramble:   return L.bramble;
+        case Tile::Grave:     return L.grave;
+        case Tile::Flagstone: return L.flagstone;
         default:              return hex(0x1A1A1A);
     }
 }
 
 // Цвет земли в точке: среднее по соседним тайлам, чтобы стык был мягким.
 Color Overworld::groundColor(int x, int y, float time) const {
-    Color c = tileBase(at(x, y));
+    Color c = tileBase(at(x, y), locale_);
     // Смешиваем с четырьмя соседями — граница размывается на полклетки.
     int nx[4] = { x - 1, x + 1, x, x };
     int ny[4] = { y, y, y - 1, y + 1 };
-    for (int i = 0; i < 4; ++i) c = lerpC(c, tileBase(at(nx[i], ny[i])), 0.04f);
+    for (int i = 0; i < 4; ++i) c = lerpC(c, tileBase(at(nx[i], ny[i]), locale_), 0.04f);
 
     // Крупный свет: облачная тень медленно ползёт по земле.
     float cloud = fbm(x * 0.045f + time * 0.06f, y * 0.045f, seed_ + 31u, 3);
@@ -431,44 +438,128 @@ void Overworld::drawTile(int x, int y, float time) const {
             float dy = (hash01(x, y, seed_ + 71u) - 0.5f) * 11.0f;
             float lean = (hash01(x, y, seed_ + 211u) - 0.5f) * 7.0f;
             Vector2 root{ fx + 16 + dx, fy + 26 + dy * 0.4f };
+            const LocaleDef& L = localeDef(locale_);
 
             DrawEllipse(int(root.x), int(root.y), int(r * 1.05f), int(4 + r * 0.16f),
                         Color{ 0, 0, 0, 110 });
-            // Ствол: конус от толстого корня к тонкой верхушке, с наклоном
+
+            // Ствол. У пальмы он длинный и гнутый, у ели короткий и прямой —
+            // силуэт дерева и делает местность узнаваемой с первого взгляда.
             float trunkH = 11.0f + hs * 8.0f;
+            if (L.treeStyle == TreeStyle::Palm) { trunkH *= 1.9f; lean *= 2.6f; }
+            if (L.treeStyle == TreeStyle::Fir)  { trunkH *= 0.8f; lean *= 0.3f; }
+            if (L.treeStyle == TreeStyle::Hedge) trunkH *= 0.45f;
+
+            Color barkLo = hex(0x241A13), barkHi = hex(0x453224);
+            if (L.treeStyle == TreeStyle::Palm) { barkLo = hex(0x4A3A22); barkHi = hex(0x7A6238); }
+            if (L.treeStyle == TreeStyle::Fir)  { barkLo = hex(0x1C1A18); barkHi = hex(0x33302A); }
             for (int i = 0; i < 5; ++i) {
                 float u = i / 4.0f;
                 DrawLineEx(Vector2{ root.x + lean * u, root.y - u * trunkH },
                            Vector2{ root.x + lean * (u + 0.25f) + sway * u * 0.4f,
                                     root.y - (u + 0.25f) * trunkH },
                            (5.2f - u * 2.6f) * (0.7f + hs * 0.5f),
-                           lerpC(hex(0x241A13), hex(0x453224), u));
+                           lerpC(barkLo, barkHi, u));
             }
-            // Ветви под кроной, чтобы не резали её поверху
-            if (hs > 0.45f) {
+            if (hs > 0.45f && L.treeStyle == TreeStyle::Oak) {
                 float bx = root.x + lean * 0.7f, by = root.y - trunkH * 0.7f;
                 float k = (hs > 0.72f) ? 1.0f : -1.0f;
                 DrawLineEx(Vector2{ bx, by }, Vector2{ bx + k * (5 + hs * 5), by - 7 }, 1.8f,
                            hex(0x352619));
             }
-            // Крона: тёмный контур силуэтом, поверх — яркая листва в три ступени.
-            // Контур обязателен: без него крона сливается с землёй и выглядит
-            // как пятно, а не как нарисованное дерево.
+
             Vector2 cr{ root.x + lean + sway, root.y - trunkH - r * 0.35f + dy * 0.3f };
-            const Color outline = hex(0x14240F);
-            DrawEllipse(int(cr.x - r * 0.52f), int(cr.y + r * 0.26f), r * 0.80f, r * 0.68f, outline);
-            DrawEllipse(int(cr.x + r * 0.50f), int(cr.y + r * 0.22f), r * 0.78f, r * 0.66f, outline);
-            DrawEllipse(int(cr.x + r * 0.10f), int(cr.y - r * 0.30f), r * 0.68f, r * 0.58f, outline);
-            DrawEllipse(int(cr.x), int(cr.y), r * 1.06f, r * 0.90f, outline);
-            art::blob(Vector2{ cr.x - r * 0.52f, cr.y + r * 0.26f }, r * 0.74f, r * 0.62f,
-                      hex(0x24401C), hex(0x3F6B2E), 3);
-            art::blob(Vector2{ cr.x + r * 0.50f, cr.y + r * 0.22f }, r * 0.72f, r * 0.60f,
-                      hex(0x26441E), hex(0x467434), 3);
-            art::blob(Vector2{ cr.x + r * 0.10f, cr.y - r * 0.30f }, r * 0.62f, r * 0.52f,
-                      hex(0x2C4C22), hex(0x588C3E), 3);
-            art::blob(cr, r, r * 0.84f, hex(0x274420), hex(0x4C7C36), 4);
-            // Просветы в листве
-            art::grit(cr, r * 0.7f, r * 0.55f, seed_ + uint32_t(x * 31 + y), hex(0x6E9C4A), 5);
+
+            switch (L.treeStyle) {
+                case TreeStyle::Fir: {
+                    // Ель: три яруса треугольников, сверху снежные шапки.
+                    const Color out = hex(0x101E18);
+                    for (int t2 = 0; t2 < 3; ++t2) {
+                        float u = t2 / 2.0f;
+                        float w = r * (1.15f - u * 0.42f);
+                        float yy = cr.y + r * 0.55f - u * r * 0.80f;
+                        DrawTriangle(Vector2{ cr.x, yy - r * 0.95f },
+                                     Vector2{ cr.x - w, yy + r * 0.12f },
+                                     Vector2{ cr.x + w, yy + r * 0.12f }, out);
+                        DrawTriangle(Vector2{ cr.x, yy - r * 0.84f },
+                                     Vector2{ cr.x - w * 0.86f, yy + r * 0.06f },
+                                     Vector2{ cr.x + w * 0.86f, yy + r * 0.06f },
+                                     lerpC(hex(0x234A33), hex(0x346B44), u));
+                        // Снег ложится только на верхнюю кромку яруса
+                        DrawTriangle(Vector2{ cr.x, yy - r * 0.84f },
+                                     Vector2{ cr.x - w * 0.40f, yy - r * 0.40f },
+                                     Vector2{ cr.x + w * 0.40f, yy - r * 0.40f },
+                                     withA(hex(0xE8F0F8), 215));
+                    }
+                    break;
+                }
+                case TreeStyle::Palm: {
+                    // Пальма: лист веером от одной точки, на конце тяжелее.
+                    const Color out = hex(0x1C3014);
+                    for (int f = 0; f < 7; ++f) {
+                        float a = -3.14159f * 0.5f + (f - 3) * 0.52f + sway * 0.012f;
+                        Vector2 tip{ cr.x + std::cos(a) * r * 1.7f,
+                                     cr.y + std::sin(a) * r * 1.15f + r * 0.30f };
+                        Vector2 mid{ (cr.x + tip.x) * 0.5f, (cr.y + tip.y) * 0.5f - r * 0.18f };
+                        DrawLineEx(cr, mid, r * 0.34f, out);
+                        DrawLineEx(mid, tip, r * 0.22f, out);
+                        DrawLineEx(cr, mid, r * 0.24f, hex(0x4E8A32));
+                        DrawLineEx(mid, tip, r * 0.14f, hex(0x6AAE44));
+                    }
+                    // Кокосы под кроной
+                    if (hs > 0.55f)
+                        for (int k = 0; k < 2; ++k)
+                            DrawCircleV(Vector2{ cr.x - 3 + k * 6, cr.y + r * 0.30f }, 2.6f,
+                                        hex(0x4A3420));
+                    break;
+                }
+                case TreeStyle::Canopy: {
+                    // Джунгли: широкий тёмный полог и свисающая лиана.
+                    const Color out = hex(0x0E2410);
+                    DrawEllipse(int(cr.x), int(cr.y), r * 1.55f, r * 0.96f, out);
+                    art::blob(Vector2{ cr.x - r * 0.60f, cr.y + r * 0.18f }, r * 0.90f, r * 0.62f,
+                              hex(0x1C421C), hex(0x2E6B2A), 3);
+                    art::blob(Vector2{ cr.x + r * 0.62f, cr.y + r * 0.14f }, r * 0.88f, r * 0.60f,
+                              hex(0x1E461E), hex(0x33742E), 3);
+                    art::blob(cr, r * 1.30f, r * 0.80f, hex(0x204A20), hex(0x3A8233), 4);
+                    art::grit(cr, r * 1.0f, r * 0.6f, seed_ + uint32_t(x * 31 + y),
+                              hex(0x7EDC5A), 6);
+                    float vx = cr.x + (hs - 0.5f) * r * 1.6f;
+                    DrawLineEx(Vector2{ vx, cr.y + r * 0.5f },
+                               Vector2{ vx + sway * 0.6f, cr.y + r * 1.7f }, 1.6f,
+                               hex(0x2A5A22));
+                    break;
+                }
+                case TreeStyle::Hedge: {
+                    // Усадьба: стриженый куст, ровный и скучный — и это нарочно.
+                    const Color out = hex(0x1E3418);
+                    DrawRectangle(int(cr.x - r * 0.92f), int(cr.y - r * 0.55f),
+                                  int(r * 1.84f), int(r * 1.25f), out);
+                    DrawRectangle(int(cr.x - r * 0.80f), int(cr.y - r * 0.44f),
+                                  int(r * 1.60f), int(r * 1.02f), hex(0x3C6B30));
+                    DrawRectangle(int(cr.x - r * 0.80f), int(cr.y - r * 0.44f),
+                                  int(r * 1.60f), int(r * 0.30f), hex(0x4E8440));
+                    break;
+                }
+                default: {
+                    // Дуб: тёмный контур силуэтом, поверх яркая листва в три ступени.
+                    const Color outline = hex(0x14240F);
+                    DrawEllipse(int(cr.x - r * 0.52f), int(cr.y + r * 0.26f), r * 0.80f, r * 0.68f, outline);
+                    DrawEllipse(int(cr.x + r * 0.50f), int(cr.y + r * 0.22f), r * 0.78f, r * 0.66f, outline);
+                    DrawEllipse(int(cr.x + r * 0.10f), int(cr.y - r * 0.30f), r * 0.68f, r * 0.58f, outline);
+                    DrawEllipse(int(cr.x), int(cr.y), r * 1.06f, r * 0.90f, outline);
+                    art::blob(Vector2{ cr.x - r * 0.52f, cr.y + r * 0.26f }, r * 0.74f, r * 0.62f,
+                              hex(0x24401C), hex(0x3F6B2E), 3);
+                    art::blob(Vector2{ cr.x + r * 0.50f, cr.y + r * 0.22f }, r * 0.72f, r * 0.60f,
+                              hex(0x26441E), hex(0x467434), 3);
+                    art::blob(Vector2{ cr.x + r * 0.10f, cr.y - r * 0.30f }, r * 0.62f, r * 0.52f,
+                              hex(0x2C4C22), hex(0x588C3E), 3);
+                    art::blob(cr, r, r * 0.84f, hex(0x274420), hex(0x4C7C36), 4);
+                    art::grit(cr, r * 0.7f, r * 0.55f, seed_ + uint32_t(x * 31 + y),
+                              hex(0x6E9C4A), 5);
+                    break;
+                }
+            }
             break;
         }
         case Tile::Rock: {

@@ -113,7 +113,7 @@ void Game::startRun() {
     player_.hp = player_.maxHp;
     inv_ = Inventory{};
     deck_.reset(starterDeck(rng_));
-    world_.generate(depth_, rng_);
+    world_.generate(depth_, rng_, 0, Locale::Forest);
     scene_ = Scene::Overworld;
     // Пролог включается один раз за всё время — в первом же бою забега.
     tutorStep_ = meta_.prologueDone ? -1 : 0;
@@ -541,11 +541,22 @@ void Game::interact(int entIndex) {
             break;
         }
         case EntKind::Carriage:
-            openDialog(e.name,
-                LS("Лошади стоят смирно. Уехать — значит сохранить добытое.",
-                   "The horses stand still. To ride out is to keep what you have."),
-                { { LS("Уехать (закончить забег)", "Ride out (end the run)"), 10 },
-                  { LS("Остаться", "Stay"), 0 } }, 4);
+            // В усадьбе карета не заканчивает забег, а увозит дальше: иначе
+            // из собственного дома нельзя было бы выехать, не бросив всё.
+            if (world_.locale() == Locale::Estate) {
+                openDialog(e.name,
+                    LS("Кучер ждёт. Дорога уходит в три стороны.",
+                       "The driver waits. The road forks three ways."),
+                    { { LS("Ехать дальше", "Ride on"), 12 },
+                      { LS("Уехать (закончить забег)", "Ride out (end the run)"), 10 },
+                      { LS("Остаться", "Stay"), 0 } }, 4);
+            } else {
+                openDialog(e.name,
+                    LS("Лошади стоят смирно. Уехать — значит сохранить добытое.",
+                       "The horses stand still. To ride out is to keep what you have."),
+                    { { LS("Уехать (закончить забег)", "Ride out (end the run)"), 10 },
+                      { LS("Остаться", "Stay"), 0 } }, 4);
+            }
             break;
         default: break;
     }
@@ -566,6 +577,7 @@ void Game::resolveDialog(int action) {
         case 2:   scene_ = Scene::Overworld; break;
         case 10:  endRun(false); break;
         case 11:  scene_ = Scene::Overworld; break;
+        case 12:  nextRegion(); break;   // из усадьбы — на развилку
         case 20: {                                            // отвар
             int cost = 5, paid = 0;
             for (int i = 0; i < MATERIAL_COUNT && paid < cost; ++i) {
@@ -1364,6 +1376,7 @@ void Game::saveRun() const {
     // Регион: сид плюс то, что игрок уже изменил
     b.u32(world_.seed());
     b.i32(world_.danger());   // опасность выбранного маршрута — часть региона
+    b.i32(int(world_.locale()));
     b.f32(world_.playerPos().x); b.f32(world_.playerPos().y);
     const auto& ents = world_.ents();
     b.u32(uint32_t(ents.size()));
@@ -1420,8 +1433,9 @@ bool Game::loadRun() {
 
     uint32_t seed = b.ru32();
     int wDanger = b.ri32();
+    Locale wLoc = Locale(clampi(b.ri32(), 0, int(Locale::COUNT) - 1));
     float px = b.rf32(), py = b.rf32();
-    world_.generate(depth_, seed, wDanger);        // тот же регион из того же сида
+    world_.generate(depth_, seed, wDanger, wLoc);  // тот же регион из того же сида
     world_.setPlayerPos(Vector2{ px, py });
 
     uint32_t ne = b.ru32();
@@ -1533,60 +1547,70 @@ static LS dangerName(int d) {
 }
 
 void Game::rollRoutes() {
-    static const LS kNames[6][2] = {
-        { LS("Низина", "The Low Ground"),      LS("Туман по пояс, под ногами мягко.", "Mist to the waist, the ground soft underfoot.") },
-        { LS("Старый тракт", "The Old Road"),  LS("По нему ещё ездят. Не все доезжают.", "It is still travelled. Not all arrive.") },
-        { LS("Горелый лес", "The Burnt Wood"), LS("Пахнет сажей, хотя не горело давно.", "It smells of soot, though nothing burned here lately.") },
-        { LS("Поля могил", "The Grave Fields"),LS("Камни стоят ровными рядами. Слишком ровными.", "The stones stand in even rows. Too even.") },
-        { LS("Каменоломня", "The Quarry"),     LS("Эхо возвращается позже, чем должно.", "The echo comes back later than it should.") },
-        { LS("Запруда", "The Millpond"),       LS("Вода стоит. В ней что-то стоит тоже.", "The water stands. Something stands in it too.") },
-    };
+    // Три местности из четырёх возможных, все разные: путешествие должно
+    // ощущаться переездом, а не сменой декораций на той же поляне.
+    Locale pool[4] = { Locale::Forest, Locale::Snow, Locale::Beach, Locale::Jungle };
+    for (int i = 3; i > 0; --i) std::swap(pool[i], pool[rng_.i(0, i)]);
 
-    // Маршруты обязаны отличаться и по опасности, и по награде: иначе выбор
-    // превращается в формальность.
     int danger[3] = { 0, 1, 2 };
     for (int i = 2; i > 0; --i) std::swap(danger[i], danger[rng_.i(0, i)]);
 
     // Реликвия закреплена за гибельным маршрутом, поэтому из общего пула её
     // убираем: иначе две дороги предлагали бы одно и то же.
-    RouteBoon pool[int(RouteBoon::COUNT) - 1];
-    int pn = 0;
+    RouteBoon boons[int(RouteBoon::COUNT) - 1];
+    int bn = 0;
     for (int i = 0; i < int(RouteBoon::COUNT); ++i)
-        if (RouteBoon(i) != RouteBoon::Relic) pool[pn++] = RouteBoon(i);
-    for (int i = pn - 1; i > 0; --i) std::swap(pool[i], pool[rng_.i(0, i)]);
+        if (RouteBoon(i) != RouteBoon::Relic) boons[bn++] = RouteBoon(i);
+    for (int i = bn - 1; i > 0; --i) std::swap(boons[i], boons[rng_.i(0, i)]);
 
-    int used[3] = { -1, -1, -1 };
     for (int i = 0; i < 3; ++i) {
-        int k;
-        bool dup;
-        int guard = 0;
-        do {
-            k = rng_.i(0, 5);
-            dup = (k == used[0] || k == used[1] || k == used[2]);
-        } while (dup && ++guard < 32);
-        used[i] = k;
-
         RouteOffer& o = routes_[i];
-        o.name = kNames[k][0];
-        o.desc = kNames[k][1];
+        const LocaleDef& L = localeDef(pool[i]);
+        o.loc = pool[i];
+        o.name = L.name;
+        o.desc = L.desc;
         o.danger = danger[i];
-        // Чем опаснее маршрут, тем весомее награда — иначе тихий путь
+        o.estate = false;
+        // Чем опаснее дорога, тем весомее награда — иначе тихий путь
         // доминировал бы всегда.
         o.boon = (danger[i] == 2) ? RouteBoon::Relic
-               : (danger[i] == 1) ? pool[0]
-                                  : pool[1];
+               : (danger[i] == 1) ? boons[0]
+                                  : boons[1];
         o.tint = dangerTint(danger[i]);
+    }
+
+    // Усадьба всегда четвёртой: домой можно заехать с любой развилки.
+    {
+        RouteOffer& o = routes_[3];
+        const LocaleDef& L = localeDef(Locale::Estate);
+        o.loc = Locale::Estate;
+        o.name = L.name;
+        o.desc = L.desc;
+        o.danger = 0;
+        o.boon = RouteBoon::Heal;
+        o.estate = true;
+        o.tint = art::pal::GoldLit;
     }
     routeHover_ = -1;
 }
 
 void Game::takeRoute(int i) {
-    if (i < 0 || i > 2) return;
+    if (i < 0 || i > 3) return;
     const RouteOffer o = routes_[i];
 
-    depth_++;
-    world_.generate(depth_, rng_, o.danger);
+    // Заезд в усадьбу не считается спуском: глубина остаётся прежней.
+    if (!o.estate) depth_++;
+    world_.generate(depth_, rng_, o.danger, o.loc);
     scene_ = Scene::Overworld;
+
+    if (o.estate) {
+        int h = std::max(1, player_.maxHp / 3);
+        player_.hp = std::min(player_.maxHp, player_.hp + h);
+        toast(LS("Дома. Карета ждёт у крыльца, когда соберётесь дальше.",
+                 "Home. The carriage waits at the porch for when you are ready."));
+        saveRun();
+        return;
+    }
 
     switch (o.boon) {
         case RouteBoon::Relic: {
@@ -1625,20 +1649,27 @@ void Game::takeRoute(int i) {
 void Game::updateDescent(float) {
     Vector2 m = GetMousePosition();
     routeHover_ = -1;
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 4; ++i)
         if (CheckCollisionPointRec(m, routeRect(i))) routeHover_ = i;
 
     if (IsKeyPressed(KEY_ONE))   takeRoute(0);
     if (IsKeyPressed(KEY_TWO))   takeRoute(1);
     if (IsKeyPressed(KEY_THREE)) takeRoute(2);
+    if (IsKeyPressed(KEY_FOUR))  takeRoute(3);
     if (routeHover_ >= 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) takeRoute(routeHover_);
 }
 
 Rectangle Game::routeRect(int i) const {
-    const float w = 300.0f, h = 300.0f, gap = 34.0f;
+    // Три дороги в ряд, усадьба — отдельной полосой снизу: это не спуск, и
+    // смешивать её с дорогами вниз было бы враньём.
+    if (i >= 3) {
+        const float w = 420.0f, h = 62.0f;
+        return Rectangle{ (sw_ - w) * 0.5f, sh_ * 0.30f + 262.0f, w, h };
+    }
+    const float w = 288.0f, h = 248.0f, gap = 30.0f;
     float total = w * 3 + gap * 2;
     float x0 = (sw_ - total) * 0.5f;
-    return Rectangle{ x0 + i * (w + gap), sh_ * 0.30f, w, h };
+    return Rectangle{ x0 + i * (w + gap), sh_ * 0.26f, w, h };
 }
 
 void Game::drawDescent() {
@@ -1671,23 +1702,38 @@ void Game::drawDescent() {
 
         art::textC(o.name.c_str(), r.x + r.width * 0.5f, r.y + 44.0f, 24.0f, art::pal::GoldLit);
         art::textWrapped(o.desc.c_str(),
-                         Rectangle{ r.x + 20, r.y + 84, r.width - 40, 70 },
+                         Rectangle{ r.x + 20, r.y + 80, r.width - 40, 64 },
                          15.0f, withA(art::pal::Vellum, 215));
 
         // Опасность: три метки, залитые по уровню
         float cx = r.x + r.width * 0.5f;
         for (int k = 0; k < 3; ++k) {
-            Vector2 p{ cx - 26.0f + k * 26.0f, r.y + 176.0f };
+            Vector2 p{ cx - 26.0f + k * 26.0f, r.y + 150.0f };
             if (k <= o.danger) DrawPoly(p, 6, 9.0f, 0.0f, o.tint);
             else               DrawPolyLines(p, 6, 9.0f, 0.0f, withA(art::pal::Bone, 90));
         }
-        art::textC(dangerName(o.danger).c_str(), cx, r.y + 194.0f, 15.0f, o.tint);
+        art::textC(dangerName(o.danger).c_str(), cx, r.y + 168.0f, 15.0f, o.tint);
 
-        DrawLineEx(Vector2{ r.x + 28, r.y + 226 }, Vector2{ r.x + r.width - 28, r.y + 226 },
+        DrawLineEx(Vector2{ r.x + 28, r.y + 190 }, Vector2{ r.x + r.width - 28, r.y + 190 },
                    1.0f, withA(art::pal::Gold, 90));
         art::textC(g_lang == Lang::Ru ? "В конце пути:" : "At the road's end:",
-                   cx, r.y + 238.0f, 14.0f, withA(art::pal::Vellum, 170));
-        art::textC(boonName(o.boon).c_str(), cx, r.y + 258.0f, 19.0f, art::pal::GoldLit);
+                   cx, r.y + 196.0f, 14.0f, withA(art::pal::Vellum, 170));
+        art::textC(boonName(o.boon).c_str(), cx, r.y + 212.0f, 19.0f, art::pal::GoldLit);
+    }
+
+    // Усадьба отдельной полосой: заехать домой можно с любой развилки.
+    {
+        const RouteOffer& o = routes_[3];
+        Rectangle r = routeRect(3);
+        bool hov = (routeHover_ == 3);
+        panel(r, 0.94f);
+        DrawRectangleRoundedLinesEx(r, 0.18f, 8, hov ? 2.6f : 1.5f,
+                                    withA(o.tint, hov ? 240 : 140));
+        art::textC(o.name.c_str(), r.x + r.width * 0.5f, r.y + 10.0f, 21.0f, art::pal::GoldLit);
+        art::textC(g_lang == Lang::Ru
+                       ? "[4]  глубина не меняется, врагов нет, отдых"
+                       : "[4]  depth unchanged, no enemies, rest",
+                   r.x + r.width * 0.5f, r.y + 36.0f, 14.0f, withA(art::pal::Vellum, 200));
     }
 
     art::drawVignette(sw_, sh_, 0.9f);

@@ -27,9 +27,11 @@ enum class RouteBoon : int { Relic = 0, Materials, Heal, Card, Forge, COUNT };
 
 struct RouteOffer {
     LS name, desc;
+    Locale loc = Locale::Forest;
     int danger = 0;            // 0 тихо, 1 опасно, 2 гибельно
     RouteBoon boon = RouteBoon::Materials;
     Color tint = WHITE;
+    bool estate = false;       // усадьба: не спуск, а заезд домой
 };
 
 struct DialogOption {
@@ -181,7 +183,7 @@ private:
     int   dlgContext_ = 0;
 
     // спуск
-    RouteOffer routes_[3];
+    RouteOffer routes_[4];   // три дороги вниз и усадьба
     int   routeHover_ = -1;
 
     // крафт

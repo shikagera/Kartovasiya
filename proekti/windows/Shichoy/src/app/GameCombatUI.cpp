@@ -818,6 +818,14 @@ void Game::debugForceScene(int which) {
             // 30..45 — экранный эффект чистой стихии, 50 — реакция Тёмный огонь
             // 60: оверворлд вплотную к бродячему врагу — чтобы на кадре была
             // видна его фигурка, иначе бродяги спавнятся далеко от старта.
+            // 70..74: по одной местности на кадр
+            if (which >= 70 && which < 70 + int(Locale::COUNT)) {
+                startRun();
+                world_.generate(3, rng_, 1, Locale(which - 70));
+                world_.snapCamera();
+                scene_ = Scene::Overworld;
+                break;
+            }
             // 61: развилка спуска, 62: бой с именным боссом
             if (which == 61) { startRun(); rollRoutes(); scene_ = Scene::Descent; break; }
             if (which == 62) {

@@ -229,7 +229,10 @@ int main(int argc, char** argv) {
                                 "", "", "fx_blood.png", "", "fx_crystal.png", "fx_arcane.png",
                                 "", "", "", "", "fx_darkfire.png",
                                 "", "", "", "", "", "", "", "", "",
-                                "shot_wanderer.png", "shot_descent.png", "shot_boss.png" };
+                                "shot_wanderer.png", "shot_descent.png", "shot_boss.png",
+                                "", "", "", "", "", "", "",
+                                "loc_forest.png", "loc_snow.png", "loc_beach.png",
+                                "loc_jungle.png", "loc_estate.png" };
         const int nameCount = int(sizeof(names) / sizeof(names[0]));
         for (int s = 0; s < nameCount; ++s) {
             if (names[s][0] == 0) continue;
