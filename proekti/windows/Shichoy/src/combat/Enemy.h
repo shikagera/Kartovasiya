@@ -98,6 +98,9 @@ struct Enemy {
     float hpFrac() const { return maxHp > 0 ? float(hp) / float(maxHp) : 0.0f; }
 };
 
-Enemy genEnemy(Rng& r, int depth, bool boss);
+// forcedArche / forcedFlavour — чтобы бой совпал с фигуркой на карте.
+Enemy genEnemy(Rng& r, int depth, bool boss,
+               Archetype forcedArche = Archetype::COUNT,
+               ElementId forcedFlavour = ElementId::None);
 
 } // namespace shichoy

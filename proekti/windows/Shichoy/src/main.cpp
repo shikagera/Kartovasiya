@@ -168,7 +168,9 @@ int main(int argc, char** argv) {
                                 "fx_fire.png", "fx_water.png", "", "", "fx_lightning.png",
                                 "fx_ice.png", "", "fx_shadow.png", "", "fx_light.png",
                                 "", "", "fx_blood.png", "", "fx_crystal.png", "fx_arcane.png",
-                                "", "", "", "", "fx_darkfire.png" };
+                                "", "", "", "", "fx_darkfire.png",
+                                "", "", "", "", "", "", "", "", "",
+                                "shot_wanderer.png" };
         const int nameCount = int(sizeof(names) / sizeof(names[0]));
         for (int s = 0; s < nameCount; ++s) {
             if (names[s][0] == 0) continue;

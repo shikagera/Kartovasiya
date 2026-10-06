@@ -165,8 +165,9 @@ void MiniGame::start(MiniGameId id, float chance, Rng& r) {
         }
         case MiniGameId::SteadyHand: {
             limit_ = 12.0f;
-            corridor_ = 16.0f + ease * 20.0f;
+            corridor_ = 0.070f + ease * 0.055f;      // доля высоты поля
             steadyNode_ = 0; steadyTouch_ = 0; steadyStarted_ = false;
+            steadyOff_ = false; steadyCool_ = 0.0f;
             for (int i = 0; i < PATH_N; ++i) {
                 float u = float(i) / (PATH_N - 1);
                 path_[i] = Vector2{ u, 0.5f + std::sin(u * 6.0f + rng_.f(0.0f, 3.0f)) * 0.26f
@@ -406,13 +407,31 @@ static Vector2 pathPoint(const Vector2* p, int i, Rectangle a) {
     return Vector2{ a.x + 30 + p[i].x * (a.width - 60), a.y + p[i].y * a.height };
 }
 
-void MiniGame::updSteady(float, Rectangle a) {
+// Ширина коридора считается от размера поля, иначе на большом окне он
+// превращается в нитку и игра становится неиграбельной.
+float MiniGame::corridorPx(Rectangle a) const { return a.height * corridor_; }
+
+void MiniGame::updSteady(float dt, Rectangle a) {
     Vector2 m = GetMousePosition();
-    Vector2 start = pathPoint(path_, 0, a);
-    if (!steadyStarted_) {
-        if (CheckCollisionPointCircle(m, start, corridor_)) steadyStarted_ = true;
+    const float rad = corridorPx(a);
+
+    // Курсор ушёл с поля — просто ждём, не наказываем.
+    if (!CheckCollisionPointRec(m, Rectangle{ a.x - 40, a.y - 40, a.width + 80, a.height + 80 })) {
+        steadyOff_ = true;
         return;
     }
+    steadyOff_ = false;
+
+    Vector2 start = pathPoint(path_, 0, a);
+    if (!steadyStarted_) {
+        // Начать можно из щедрой зоны вокруг старта
+        if (CheckCollisionPointCircle(m, start, rad * 1.6f)) {
+            steadyStarted_ = true;
+            audio::play(audio::Sfx::UiClick, 0.5f, 1.3f);
+        }
+        return;
+    }
+
     // Ближайший отрезок коридора
     float best = 1e9f;
     int bestSeg = 0;
@@ -426,38 +445,80 @@ void MiniGame::updSteady(float, Rectangle a) {
         if (d < best) { best = d; bestSeg = i; }
     }
     if (bestSeg > steadyNode_) steadyNode_ = bestSeg;
-    if (best > corridor_) {
-        steadyTouch_++;
-        audio::play(audio::Sfx::Miss, 0.35f);
-        steadyStarted_ = false;                       // сорвался — начни заново
-        steadyNode_ = 0;
-        if (steadyTouch_ >= 3) finish(false, false);
+
+    // Касание стены не обнуляет пройденное — оно стоит времени и оценки.
+    steadyCool_ = std::max(0.0f, steadyCool_ - dt);
+    if (best > rad) {
+        if (steadyCool_ <= 0.0f) {
+            steadyTouch_++;
+            steadyCool_ = 0.45f;                  // чтобы не считать касание каждый кадр
+            timer_ += 1.0f;
+            audio::play(audio::Sfx::Miss, 0.4f);
+            if (steadyTouch_ >= 5) finish(false, false);
+        }
         return;
     }
+
     Vector2 end = pathPoint(path_, PATH_N - 1, a);
-    if (CheckCollisionPointCircle(m, end, corridor_) && steadyNode_ >= PATH_N - 3)
+    if (CheckCollisionPointCircle(m, end, rad * 1.4f) && steadyNode_ >= PATH_N - 3)
         finish(true, steadyTouch_ == 0);
 }
 
 void MiniGame::drawSteady(Rectangle a, float t) const {
+    const float rad = corridorPx(a);
+    Vector2 m = GetMousePosition();
+
+    // Жёлоб: тёмное дно, латунные борта, пройденная часть светится
     for (int i = 0; i < PATH_N - 1; ++i) {
         Vector2 p0 = pathPoint(path_, i, a), p1 = pathPoint(path_, i + 1, a);
-        DrawLineEx(p0, p1, corridor_ * 2.0f, withA(hex(0x1C2A22), 220));
-        DrawLineEx(p0, p1, corridor_ * 2.0f - 4.0f, hex(0x0E1612));
-        DrawLineEx(p0, p1, 1.2f, withA(art::pal::Gold, 70));
+        DrawLineEx(p0, p1, rad * 2.0f + 10.0f, hex(0x4A3826));
+        DrawLineEx(p0, p1, rad * 2.0f + 4.0f, hex(0x6E5628));
+        DrawLineEx(p0, p1, rad * 2.0f, hex(0x120D16));
+        art::blob(p0, rad + 5.0f, rad + 5.0f, hex(0x2A2014), hex(0x7A6034), 3);
     }
+    // Пройденный участок — чтобы прогресс было видно
+    for (int i = 0; i < steadyNode_ && i < PATH_N - 1; ++i) {
+        Vector2 p0 = pathPoint(path_, i, a), p1 = pathPoint(path_, i + 1, a);
+        DrawLineEx(p0, p1, rad * 1.7f, withA(hex(0x2D6A4F), 150));
+    }
+
     Vector2 s = pathPoint(path_, 0, a), e = pathPoint(path_, PATH_N - 1, a);
     float pulse = 0.5f + 0.5f * std::sin(t * 4.0f);
-    DrawCircleLines(int(s.x), int(s.y), corridor_,
-                    steadyStarted_ ? withA(art::pal::Gold, 120)
-                                   : withA(art::pal::GoldLit, (unsigned char)(140 + 110 * pulse)));
-    DrawCircleLines(int(e.x), int(e.y), corridor_, withA(hex(0x59C772), 200));
-    art::textC(g_lang == Lang::Ru ? "старт" : "start", s.x, s.y - corridor_ - 16, 11.0f,
-               withA(art::pal::Vellum, 200));
-    art::textC(g_lang == Lang::Ru ? "конец" : "end", e.x, e.y - corridor_ - 16, 11.0f,
-               withA(art::pal::Vellum, 200));
-    for (int i = 0; i < steadyTouch_; ++i)
-        DrawCircleV(Vector2{ a.x + 18.0f + i * 16.0f, a.y + 16.0f }, 5.0f, art::pal::Risk);
+
+    // Старт: крупная пульсирующая зона с подписью, пока не начали
+    if (!steadyStarted_) {
+        DrawCircleGradient(int(s.x), int(s.y), rad * 2.6f,
+                           withA(art::pal::GoldLit, (unsigned char)(70 + 60 * pulse)), BLANK);
+        DrawCircleLines(int(s.x), int(s.y), rad * 1.6f,
+                        withA(art::pal::GoldLit, (unsigned char)(160 + 90 * pulse)));
+        art::textC(g_lang == Lang::Ru ? "наведите курсор сюда" : "put the cursor here",
+                   s.x, s.y - rad - 30.0f, 14.0f, art::pal::GoldLit);
+    } else {
+        DrawCircleLines(int(s.x), int(s.y), rad, withA(art::pal::Gold, 110));
+    }
+    // Конец
+    DrawCircleGradient(int(e.x), int(e.y), rad * 1.8f,
+                       withA(hex(0x59C772), (unsigned char)(50 + 40 * pulse)), BLANK);
+    DrawCircleLines(int(e.x), int(e.y), rad * 1.4f, withA(hex(0x59C772), 210));
+    art::textC(g_lang == Lang::Ru ? "конец" : "end", e.x, e.y - rad - 18.0f, 12.0f,
+               withA(art::pal::Vellum, 210));
+
+    // Сам курсор — резец, который ведут по жёлобу
+    if (steadyStarted_ && !steadyOff_) {
+        Color cc = (steadyCool_ > 0.0f) ? art::pal::Risk : art::pal::GoldLit;
+        DrawCircleGradient(int(m.x), int(m.y), 22.0f, withA(cc, 90), BLANK);
+        art::blob(m, 7.0f, 7.0f, scaleC(cc, 0.4f), cc, 4);
+        DrawCircleLines(int(m.x), int(m.y), 9.0f, withA(cc, 220));
+    }
+    if (steadyOff_)
+        art::textC(g_lang == Lang::Ru ? "верните курсор на поле" : "bring the cursor back",
+                   a.x + a.width * 0.5f, a.y + a.height * 0.5f, 16.0f,
+                   withA(art::pal::Vellum, 210));
+
+    // Счётчик срывов: пять — провал
+    for (int i = 0; i < 5; ++i)
+        DrawCircleV(Vector2{ a.x + 20.0f + i * 18.0f, a.y + 20.0f }, 6.0f,
+                    i < steadyTouch_ ? art::pal::Risk : withA(art::pal::Vellum, 70));
 }
 
 // ── 5. Задуть свечи ───────────────────────────────────────────────────────

@@ -76,6 +76,10 @@ void drawAristocratSide(Vector2 pos, float scale, float t, float tablePull);
 void drawEnemyBody(Vector2 center, float scale, uint32_t seed, ElementId flavour,
                    float t, float shake, Color tint, int phase, Archetype arche);
 
+// Фигурка врага на карте мира: тот же облик, что встретит в бою.
+void drawEnemyToken(Vector2 pos, float scale, Archetype arche, ElementId flavour,
+                    float t, float aggro, uint32_t seed);
+
 // Карта противника — грубая, костяная, ничего общего с Таро игрока.
 void drawEnemyCard(const EnemyMove& m, Rectangle r, float t, Color flavour,
                    bool active, bool faceDown, bool dead);

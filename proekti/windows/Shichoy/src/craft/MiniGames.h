@@ -85,9 +85,12 @@ private:
     // ── Твёрдая рука ──────────────────────────────────────────────────────
     static constexpr int PATH_N = 9;
     Vector2 path_[PATH_N]{};
-    float corridor_ = 26.0f;
+    float corridor_ = 0.08f;        // доля высоты поля, а не пиксели
+    float steadyCool_ = 0.0f;       // пауза между засчитанными касаниями
     int   steadyNode_ = 0, steadyTouch_ = 0;
     bool  steadyStarted_ = false;
+    bool  steadyOff_ = false;       // курсор вне поля — игра ждёт
+    float corridorPx(Rectangle a) const;
 
     // ── Свечи ─────────────────────────────────────────────────────────────
     int   candleTotal_ = 5, candleOut_ = 0;

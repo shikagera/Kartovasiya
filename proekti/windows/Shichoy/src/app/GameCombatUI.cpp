@@ -692,6 +692,20 @@ void Game::debugForceScene(int which) {
         default:
             // 8..15 — по одной мини-игре на кадр
             // 30..45 — экранный эффект чистой стихии, 50 — реакция Тёмный огонь
+            // 60: оверворлд вплотную к бродячему врагу — чтобы на кадре была
+            // видна его фигурка, иначе бродяги спавнятся далеко от старта.
+            if (which == 60) {
+                startRun();
+                for (int i = 0; i < world_.entCount(); ++i) {
+                    const WorldEnt& we = world_.ent(i);
+                    if (we.kind != EntKind::Enemy) continue;
+                    world_.setPlayerPos(Vector2{ we.pos.x - 150.0f, we.pos.y + 95.0f });
+                    break;
+                }
+                world_.snapCamera();
+                scene_ = Scene::Overworld;
+                break;
+            }
             if (which >= 30) {
                 startRun();
                 Enemy e = genEnemy(rng_, 5, false);

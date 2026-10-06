@@ -109,6 +109,13 @@ private:
     MiniGame mini_;
     art::ScreenFx fx_;
 
+    // Низкое разрешение для мира: отсюда пиксель-арт вместо гладкой графики
+    static constexpr int PIXEL_SCALE = 3;
+    RenderTexture2D worldTex_{};
+    int   worldTexW_ = 0, worldTexH_ = 0;
+    void  ensureWorldTexture();
+    void  drawWorldPixel();
+
     int   depth_ = 1;
     int   pendingEnt_ = -1;
     bool  pendingBoss_ = false;

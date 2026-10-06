@@ -84,7 +84,7 @@ void Overworld::generate(int depth, uint32_t seed) {
     cam_.target = player_;
     cam_.offset = Vector2{ GetScreenWidth() * 0.5f, GetScreenHeight() * 0.5f };
     cam_.rotation = 0.0f;
-    cam_.zoom = 1.6f;
+    cam_.zoom = 2.1f;
 
     placeEntities(r);
 }
@@ -204,6 +204,13 @@ void Overworld::placeEntities(Rng& r) {
         if (!freeSpot(e.pos, 220.0f)) continue;
         e.home = e.pos;
         e.data = r.i(0, 3);
+        // Кем он будет в бою — решается здесь, чтобы фигурка на карте совпала.
+        e.arche = r.i(0, int(Archetype::COUNT) - 1);
+        e.flavour = randomElement(r, depth_);
+        e.name = LS(std::string(archetypeName(Archetype(e.arche)).ru) + ", "
+                        + elem(e.flavour).name.ru,
+                    std::string(archetypeName(Archetype(e.arche)).en) + ", "
+                        + elem(e.flavour).name.en);
         ents_.push_back(e);
     }
 }
@@ -309,15 +316,15 @@ void Overworld::update(float dt, bool inputEnabled) {
 
 static Color tileBase(Tile t) {
     switch (t) {
-        case Tile::Grass:     return hex(0x2C4232);
-        case Tile::DarkGrass: return hex(0x1B2A20);
-        case Tile::Path:      return hex(0x453A2C);
-        case Tile::Mud:       return hex(0x33291B);
-        case Tile::Water:     return hex(0x122036);
-        case Tile::Rock:      return hex(0x33333D);
-        case Tile::Tree:      return hex(0x18271C);
-        case Tile::Bramble:   return hex(0x22201A);
-        case Tile::Grave:     return hex(0x272A31);
+        case Tile::Grass:     return hex(0x4E7A3A);
+        case Tile::DarkGrass: return hex(0x33522C);
+        case Tile::Path:      return hex(0x8A6A42);
+        case Tile::Mud:       return hex(0x5E452A);
+        case Tile::Water:     return hex(0x2A5A86);
+        case Tile::Rock:      return hex(0x6A6A74);
+        case Tile::Tree:      return hex(0x3A5E2E);
+        case Tile::Bramble:   return hex(0x4A4028);
+        case Tile::Grave:     return hex(0x535660);
         case Tile::Flagstone: return hex(0x3A3A44);
         default:              return hex(0x1A1A1A);
     }
@@ -329,12 +336,12 @@ Color Overworld::groundColor(int x, int y, float time) const {
     // Смешиваем с четырьмя соседями — граница размывается на полклетки.
     int nx[4] = { x - 1, x + 1, x, x };
     int ny[4] = { y, y, y - 1, y + 1 };
-    for (int i = 0; i < 4; ++i) c = lerpC(c, tileBase(at(nx[i], ny[i])), 0.12f);
+    for (int i = 0; i < 4; ++i) c = lerpC(c, tileBase(at(nx[i], ny[i])), 0.04f);
 
     // Крупный свет: облачная тень медленно ползёт по земле.
     float cloud = fbm(x * 0.045f + time * 0.06f, y * 0.045f, seed_ + 31u, 3);
-    float lightK = 0.92f + 0.34f * fbm(x * 0.11f, y * 0.11f, seed_ + 5u, 3);
-    lightK *= (0.90f + 0.22f * cloud);
+    float lightK = 0.94f + 0.22f * fbm(x * 0.11f, y * 0.11f, seed_ + 5u, 3);
+    lightK *= (0.95f + 0.12f * cloud);
     return scaleC(c, lightK);
 }
 
@@ -346,17 +353,30 @@ void Overworld::drawTile(int x, int y, float time) const {
 
     DrawRectangle(int(fx), int(fy), TILE, TILE, c);
 
-    // Растушёвка к соседям: полупрозрачные полосы по краям клетки
+    // Стык с соседями — не градиент, а дизеринг блоками: градиент после
+    // уменьшения до пиксельного буфера читался как размытое пятно, а
+    // шахматка из блоков остаётся честным пиксель-артом на любом масштабе.
+    const int DB = TILE / 8;                     // размер блока дизеринга
     for (int side = 0; side < 4; ++side) {
         int nxp = x + (side == 0 ? -1 : side == 1 ? 1 : 0);
         int nyp = y + (side == 2 ? -1 : side == 3 ? 1 : 0);
-        if (at(nxp, nyp) == t) continue;
-        Color nc = withA(groundColor(nxp, nyp, time), 90);
-        switch (side) {
-            case 0: DrawRectangleGradientH(int(fx), int(fy), TILE / 2, TILE, nc, BLANK); break;
-            case 1: DrawRectangleGradientH(int(fx + TILE / 2), int(fy), TILE / 2, TILE, BLANK, nc); break;
-            case 2: DrawRectangleGradientV(int(fx), int(fy), TILE, TILE / 2, nc, BLANK); break;
-            default: DrawRectangleGradientV(int(fx), int(fy + TILE / 2), TILE, TILE / 2, BLANK, nc); break;
+        Tile nt = at(nxp, nyp);
+        if (nt == t) continue;
+        Color nc = groundColor(nxp, nyp, time);
+        // Два ряда блоков от края: первый почти сплошной, второй редкий.
+        for (int d = 0; d < 2; ++d) {
+            float keep = (d == 0) ? 0.72f : 0.30f;
+            for (int k = 0; k < 8; ++k) {
+                if (hash01(x * 29 + k, y * 53 + d + side * 7, seed_ + 907u) > keep) continue;
+                int bx = 0, by = 0;
+                switch (side) {
+                    case 0:  bx = 0 + d;            by = k;      break;
+                    case 1:  bx = 7 - d;            by = k;      break;
+                    case 2:  bx = k;                by = 0 + d;  break;
+                    default: bx = k;                by = 7 - d;  break;
+                }
+                DrawRectangle(int(fx) + bx * DB, int(fy) + by * DB, DB, DB, nc);
+            }
         }
     }
 
@@ -409,17 +429,24 @@ void Overworld::drawTile(int x, int y, float time) const {
                 DrawLineEx(Vector2{ bx, by }, Vector2{ bx + k * (5 + hs * 5), by - 7 }, 1.8f,
                            hex(0x352619));
             }
-            // Крона: четыре пятна разного размера, светлее сверху
+            // Крона: тёмный контур силуэтом, поверх — яркая листва в три ступени.
+            // Контур обязателен: без него крона сливается с землёй и выглядит
+            // как пятно, а не как нарисованное дерево.
             Vector2 cr{ root.x + lean + sway, root.y - trunkH - r * 0.35f + dy * 0.3f };
+            const Color outline = hex(0x14240F);
+            DrawEllipse(int(cr.x - r * 0.52f), int(cr.y + r * 0.26f), r * 0.80f, r * 0.68f, outline);
+            DrawEllipse(int(cr.x + r * 0.50f), int(cr.y + r * 0.22f), r * 0.78f, r * 0.66f, outline);
+            DrawEllipse(int(cr.x + r * 0.10f), int(cr.y - r * 0.30f), r * 0.68f, r * 0.58f, outline);
+            DrawEllipse(int(cr.x), int(cr.y), r * 1.06f, r * 0.90f, outline);
             art::blob(Vector2{ cr.x - r * 0.52f, cr.y + r * 0.26f }, r * 0.74f, r * 0.62f,
-                      hex(0x0B1510), hex(0x1C3021), 4);
+                      hex(0x24401C), hex(0x3F6B2E), 3);
             art::blob(Vector2{ cr.x + r * 0.50f, cr.y + r * 0.22f }, r * 0.72f, r * 0.60f,
-                      hex(0x0B1510), hex(0x22381F), 4);
+                      hex(0x26441E), hex(0x467434), 3);
             art::blob(Vector2{ cr.x + r * 0.10f, cr.y - r * 0.30f }, r * 0.62f, r * 0.52f,
-                      hex(0x0E1A12), hex(0x2F4B34), 4);
-            art::blob(cr, r, r * 0.84f, hex(0x0D1811), hex(0x28422E), 5);
+                      hex(0x2C4C22), hex(0x588C3E), 3);
+            art::blob(cr, r, r * 0.84f, hex(0x274420), hex(0x4C7C36), 4);
             // Просветы в листве
-            art::grit(cr, r * 0.7f, r * 0.55f, seed_ + uint32_t(x * 31 + y), hex(0x3E6144), 5);
+            art::grit(cr, r * 0.7f, r * 0.55f, seed_ + uint32_t(x * 31 + y), hex(0x6E9C4A), 5);
             break;
         }
         case Tile::Rock: {
@@ -428,14 +455,15 @@ void Overworld::drawTile(int x, int y, float time) const {
             float rx = fx + 16 + (hash01(x, y, seed_ + 61u) - 0.5f) * 7.0f;
             float ry = fy + 17 + (hash01(x, y, seed_ + 91u) - 0.5f) * 6.0f;
             DrawEllipse(int(rx), int(ry + rr * 0.55f), int(rr), 4, Color{ 0, 0, 0, 110 });
-            // Камень слоями: тень снизу, свет сверху
+            // Камень: тёмный контур, затем слои от тени к свету. Светлее, чем
+            // было: на тёплой земле прежний почти чёрный камень читался дырой.
+            DrawPoly(Vector2{ rx, ry }, sides, rr * 1.10f, v * 90.0f, hex(0x22222B));
             for (int L = 4; L >= 0; --L) {
                 float k = L / 4.0f;
-                DrawPoly(Vector2{ rx, ry + rr * 0.22f * k }, sides, rr * (0.55f + 0.45f * k),
-                         v * 90.0f, lerpC(hex(0x55555F), hex(0x1E1E26), k));
+                DrawPoly(Vector2{ rx, ry + rr * 0.22f * k }, sides, rr * (0.55f + 0.42f * k),
+                         v * 90.0f, lerpC(hex(0x9A9AA6), hex(0x4A4A56), k));
             }
-            DrawPolyLinesEx(Vector2{ rx, ry }, sides, rr, v * 90.0f, 1.3f, hex(0x60606C));
-            art::grit(Vector2{ rx, ry }, rr * 0.7f, rr * 0.6f, seed_ + uint32_t(x + y), hex(0x101016), 6);
+            art::grit(Vector2{ rx, ry }, rr * 0.7f, rr * 0.6f, seed_ + uint32_t(x + y), hex(0x2E2E38), 6);
             break;
         }
         case Tile::Bramble: {
@@ -618,29 +646,26 @@ static void drawEntity(const WorldEnt& e, float time) {
                                withA(art::pal::Gold, (unsigned char)(40 + 35 * g)), BLANK);
             break;
         }
-        case EntKind::Enemy: {
-            float bob = std::sin(time * 3.0f + e.pos.x * 0.03f) * 2.0f;
-            DrawEllipse(int(e.pos.x), int(e.pos.y + 11), 10, 4, Color{ 0, 0, 0, 130 });
-            Color body = e.aggro > 0.35f ? hex(0x3A1420) : hex(0x191424);
-            DrawTriangle(Vector2{ e.pos.x - 10, e.pos.y + 11 },
-                         Vector2{ e.pos.x, e.pos.y - 12 + bob },
-                         Vector2{ e.pos.x + 10, e.pos.y + 11 }, body);
-            DrawCircleV(Vector2{ e.pos.x - 3, e.pos.y - 4 + bob }, 1.8f, hex(0xFF4D4D));
-            DrawCircleV(Vector2{ e.pos.x + 3, e.pos.y - 4 + bob }, 1.8f, hex(0xFF4D4D));
-            if (e.aggro > 0.35f)
-                art::textC("!", e.pos.x, e.pos.y - 30 + bob, 16.0f, hex(0xFF5A40));
+        case EntKind::Enemy:
+            // На карте стоит ровно тот облик, который встретит в бою.
+            art::drawEnemyToken(e.pos, 1.15f, Archetype(e.arche), e.flavour,
+                                time, e.aggro, e.seed);
             break;
-        }
     }
 }
 
-void Overworld::draw(float time) const {
+void Overworld::draw(float time, int viewW, int viewH, float pixelScale) const {
     ClearBackground(art::pal::Night);
-    BeginMode2D(cam_);
+
+    // Камера под низкое разрешение: поле зрения то же, пикселей втрое меньше.
+    Camera2D cam = cam_;
+    cam.offset = Vector2{ viewW * 0.5f, viewH * 0.5f };
+    cam.zoom = cam_.zoom * pixelScale;
+    BeginMode2D(cam);
 
     // Видимая область в тайлах
-    float halfW = GetScreenWidth() * 0.5f / cam_.zoom;
-    float halfH = GetScreenHeight() * 0.5f / cam_.zoom;
+    float halfW = viewW * 0.5f / cam.zoom;
+    float halfH = viewH * 0.5f / cam.zoom;
     int x0 = clampi(int((cam_.target.x - halfW) / TILE) - 1, 0, MAP_W - 1);
     int x1 = clampi(int((cam_.target.x + halfW) / TILE) + 1, 0, MAP_W - 1);
     int y0 = clampi(int((cam_.target.y - halfH) / TILE) - 1, 0, MAP_H - 1);
@@ -669,15 +694,14 @@ void Overworld::draw(float time) const {
 
     EndMode2D();
 
-    // Туман и лунный свет — поверх мира, в экранных координатах
-    int sw = GetScreenWidth(), sh = GetScreenHeight();
+    // Туман и лунный свет — поверх мира, в координатах буфера
+    const int sw = viewW, sh = viewH;
     for (int i = 0; i < 5; ++i) {
-        float ox = std::fmod(time * (6.0f + i * 3.0f), float(sw + 400)) - 200.0f;
-        float oy = 90.0f + i * 96.0f + std::sin(time * 0.4f + i) * 18.0f;
-        DrawCircleGradient(int(ox), int(oy), 190.0f, withA(art::pal::Fog, 12), BLANK);
+        float ox = std::fmod(time * (6.0f + i * 3.0f) * pixelScale, float(sw + 140)) - 70.0f;
+        float oy = (90.0f + i * 96.0f + std::sin(time * 0.4f + i) * 18.0f) * pixelScale;
+        DrawCircleGradient(int(ox), int(oy), 190.0f * pixelScale, withA(art::pal::Fog, 12), BLANK);
     }
-    DrawCircleGradient(sw / 2, sh / 2, float(sh) * 1.15f, BLANK, Color{ 0, 0, 0, 120 });
-    art::drawVignette(sw, sh, 0.9f);
+    DrawCircleGradient(sw / 2, sh / 2, float(sh) * 1.15f, BLANK, Color{ 0, 0, 0, 55 });
 }
 
 void Overworld::drawHud(float) const { /* HUD рисует Game — здесь только мир */ }

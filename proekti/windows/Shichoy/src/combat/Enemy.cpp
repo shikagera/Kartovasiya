@@ -256,17 +256,18 @@ static WeakSpot makeSpot(Rng& r, int depth, int i, bool boss) {
     return s;
 }
 
-Enemy genEnemy(Rng& r, int depth, bool boss) {
+Enemy genEnemy(Rng& r, int depth, bool boss, Archetype forcedArche, ElementId forcedFlavour) {
     Enemy e;
     e.seed = uint32_t(r.next());
     e.depth = std::max(1, depth);
     e.boss = boss;
-    e.flavour = randomElement(r, depth);
+    e.flavour = (forcedFlavour != ElementId::None) ? forcedFlavour : randomElement(r, depth);
 
     const LS& pre = r.pick(enemyPrefixes());
     const LS& noun = r.pick(enemyNouns());
     e.name = LS(std::string(pre.ru) + " " + noun.ru, std::string(pre.en) + " " + noun.en);
-    e.arche = Archetype(r.i(0, int(Archetype::COUNT) - 1));
+    e.arche = (forcedArche != Archetype::COUNT) ? forcedArche
+                                                : Archetype(r.i(0, int(Archetype::COUNT) - 1));
     e.epithet = boss ? LS("хозяин руин", "master of the ruin")
                      : LS(std::string(archetypeName(e.arche).ru) + ", " + elem(e.flavour).name.ru,
                           std::string(archetypeName(e.arche).en) + ", " + elem(e.flavour).name.en);

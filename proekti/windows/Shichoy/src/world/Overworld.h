@@ -1,6 +1,7 @@
 // Overworld / Оверворлд: топ-даун исследование, ресурсы, NPC, руины, события.
 #pragma once
 #include "core/Biome.h"
+#include "combat/Enemy.h"
 #include "core/Cards.h"
 
 namespace shichoy {
@@ -36,6 +37,9 @@ struct WorldEnt {
     float aggro = 0.0f;      // для врагов
     Vector2 home{ 0, 0 };
     uint32_t seed = 0;
+    // Для бродячих врагов: кем он окажется в бою. На карте рисуется тот же.
+    int   arche = 0;
+    ElementId flavour = ElementId::None;
     LS name;
 };
 
@@ -54,11 +58,15 @@ public:
     std::vector<WorldEnt>& entsMut() { return ents_; }
     const std::vector<WorldEnt>& ents() const { return ents_; }
     void update(float dt, bool inputEnabled);
-    void draw(float time) const;
+    // Мир рисуется в низкое разрешение и растягивается без сглаживания —
+    // отсюда «пиксельный» вид вместо гладкой векторной геометрии.
+    void draw(float time, int viewW, int viewH, float pixelScale) const;
     void drawHud(float time) const;
 
     Vector2 playerPos() const { return player_; }
     void setPlayerPos(Vector2 p) { player_ = p; }
+    // Камера без догоняющей интерполяции: нужно после телепорта игрока.
+    void snapCamera() { cam_.target = player_; }
     Camera2D camera() const { return cam_; }
     int depth() const { return depth_; }
 

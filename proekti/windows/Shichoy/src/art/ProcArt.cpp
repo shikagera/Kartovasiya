@@ -1092,6 +1092,187 @@ void drawEnemyBody(Vector2 center, float scale, uint32_t seed, ElementId flavour
                  6 + phase * 2, withA(edge, 90), t);
 }
 
+
+// ── Фигурка врага на карте мира ───────────────────────────────────────────
+// Тот же облик, что встретится в бою, только мелкий и сверху-сбоку. Раньше
+// здесь был безликий треугольник, и игрок не знал, к кому идёт.
+void drawEnemyToken(Vector2 pos, float scale, Archetype arche, ElementId flavour,
+                    float t, float aggro, uint32_t seed) {
+    const float s = scale;
+    const Color tint = elem(flavour).primary;
+    Color body = lerpC(hex(0x2E2544), tint, 0.34f + aggro * 0.18f);
+    Color deep = scaleC(body, 0.45f), lit = scaleC(body, 1.85f);
+    Color eyes = aggro > 0.35f ? hex(0xFF5A40) : lerpC(tint, WHITE, 0.4f);
+    float bob = std::sin(t * 3.0f + pos.x * 0.03f) * 1.6f * s;
+    float y = pos.y + bob;
+
+    // Контактная тень
+    DrawEllipse(int(pos.x), int(pos.y + 13 * s), int(11 * s), int(4 * s), Color{ 0, 0, 0, 130 });
+
+    auto eye = [&](float dx, float dy, float r) {
+        DrawCircleV(Vector2{ pos.x + dx, y + dy }, r * 1.7f, hex(0x07060A));
+        DrawCircleV(Vector2{ pos.x + dx, y + dy }, r, eyes);
+    };
+
+    switch (arche) {
+        case Archetype::Candelabrum: {
+            blob(Vector2{ pos.x, y + 9 * s }, 8 * s, 3 * s, deep, lit, 3);   // основание
+            DrawRectangleRounded(Rectangle{ pos.x - 1.6f * s, y - 7 * s, 3.2f * s, 17 * s },
+                                 0.5f, 4, body);
+            for (int k = -1; k <= 1; k += 2) {                                // рожки
+                DrawLineEx(Vector2{ pos.x, y - 2 * s },
+                           Vector2{ pos.x + k * 7 * s, y - 7 * s }, 1.8f * s, lit);
+                float fl = 0.7f + 0.3f * std::sin(t * 9.0f + k);
+                DrawCircleGradient(int(pos.x + k * 7 * s), int(y - 10 * s), 7 * s * fl,
+                                   withA(hex(0xFFBA08), 130), BLANK);
+                DrawTriangle(Vector2{ pos.x + k * 7 * s, y - 13 * s * fl },
+                             Vector2{ pos.x + k * 7 * s - 2 * s, y - 8 * s },
+                             Vector2{ pos.x + k * 7 * s + 2 * s, y - 8 * s }, hex(0xFFD60A));
+            }
+            float fl = 0.8f + 0.2f * std::sin(t * 6.0f);                      // навершие
+            DrawCircleGradient(int(pos.x), int(y - 12 * s), 11 * s * fl,
+                               withA(hex(0xFFBA08), 120), BLANK);
+            DrawTriangle(Vector2{ pos.x, y - 18 * s * fl }, Vector2{ pos.x - 4 * s, y - 8 * s },
+                         Vector2{ pos.x + 4 * s, y - 8 * s }, hex(0xE85D04));
+            eye(-2.0f * s, -11 * s, 1.0f * s);
+            eye(2.0f * s, -11 * s, 1.0f * s);
+            break;
+        }
+        case Archetype::Portrait: {
+            Rectangle fr{ pos.x - 9 * s, y - 13 * s, 18 * s, 24 * s };        // рама
+            DrawRectangleRec(fr, hex(0x0D0A12));
+            DrawRectangleGradientV(int(fr.x), int(fr.y), int(fr.width), int(fr.height),
+                                   scaleC(body, 1.1f), hex(0x07060A));
+            DrawRectangleLinesEx(fr, 2.4f * s, pal::Gold);
+            DrawRectangleLinesEx(Rectangle{ fr.x - 1.5f * s, fr.y - 1.5f * s,
+                                            fr.width + 3 * s, fr.height + 3 * s },
+                                 1.2f * s, scaleC(pal::Gold, 0.6f));
+            blob(Vector2{ pos.x, y + 2 * s }, 6 * s, 7 * s, deep, lit, 4);    // фигура
+            blob(Vector2{ pos.x, y - 5 * s }, 4 * s, 4.5f * s,
+                 scaleC(pal::Vellum, 0.5f), pal::Vellum, 4);
+            eye(-1.6f * s, -5.5f * s, 0.9f * s);
+            eye(1.6f * s, -5.5f * s, 0.9f * s);
+            for (int k = -1; k <= 1; k += 2)                                   // кисти на раме
+                blob(Vector2{ pos.x + k * 9 * s, y + 5 * s }, 2.6f * s, 2.0f * s, deep, lit, 3);
+            break;
+        }
+        case Archetype::Hound: {
+            float step = std::sin(t * 5.0f) * 2.0f * s;
+            for (int i = 0; i < 4; ++i) {                                      // лапы
+                float lx = pos.x - 7 * s + (i % 2) * 14 * s + (i / 2) * 2 * s;
+                DrawLineEx(Vector2{ lx, y + 3 * s },
+                           Vector2{ lx + ((i % 2) ? step : -step), y + 11 * s }, 2.4f * s, deep);
+            }
+            blob(Vector2{ pos.x - 3 * s, y + 1 * s }, 8 * s, 5.5f * s, deep, lit, 5);
+            blob(Vector2{ pos.x + 5 * s, y }, 6 * s, 5 * s, deep, lit, 4);
+            DrawLineEx(Vector2{ pos.x - 10 * s, y - 1 * s },                   // хвост
+                       Vector2{ pos.x - 15 * s, y - 5 * s + step }, 1.8f * s, body);
+            blob(Vector2{ pos.x + 12 * s, y - 3 * s }, 6 * s, 3.2f * s,        // морда
+                 scaleC(pal::Bone, 0.45f), lerpC(pal::Bone, body, 0.3f), 4);
+            eye(10 * s, -4.5f * s, 1.0f * s);
+            for (int i = 0; i < 4; ++i)                                        // клыки
+                DrawTriangle(Vector2{ pos.x + 12 * s + i * 1.6f * s, y - 1.5f * s },
+                             Vector2{ pos.x + 13 * s + i * 1.6f * s, y - 1.5f * s },
+                             Vector2{ pos.x + 12.5f * s + i * 1.6f * s, y + 1.5f * s },
+                             pal::Bone);
+            DrawTriangle(Vector2{ pos.x + 6 * s, y - 6 * s }, Vector2{ pos.x + 10 * s, y - 7 * s },
+                         Vector2{ pos.x + 6 * s, y - 12 * s }, body);          // ухо
+            break;
+        }
+        case Archetype::Automaton: {
+            Color brass = lerpC(hex(0xA8813F), body, 0.3f);
+            for (int i = 0; i < 2; ++i)                                        // сегменты
+                blob(Vector2{ pos.x, y + 1 * s + i * 6 * s }, (8 - i * 1.5f) * s, 4.5f * s,
+                     scaleC(brass, 0.4f), scaleC(brass, 1.6f), 4);
+            for (int k = -1; k <= 1; k += 2) {                                 // клещи
+                DrawLineEx(Vector2{ pos.x + k * 7 * s, y - 2 * s },
+                           Vector2{ pos.x + k * 10 * s, y + 7 * s }, 2.2f * s, brass);
+                DrawCircleV(Vector2{ pos.x + k * 10 * s, y + 7 * s }, 1.8f * s,
+                            scaleC(brass, 1.5f));
+            }
+            DrawPolyLinesEx(Vector2{ pos.x, y + 3 * s }, 8, 3.4f * s, t * 60.0f, 1.2f * s,
+                            pal::GoldLit);                                     // шестерня
+            DrawRectangleRounded(Rectangle{ pos.x - 6 * s, y - 13 * s, 12 * s, 10 * s },
+                                 0.3f, 4, brass);                              // голова-фонарь
+            DrawRectangleRoundedLinesEx(Rectangle{ pos.x - 6 * s, y - 13 * s, 12 * s, 10 * s },
+                                        0.3f, 4, 1.2f * s, pal::GoldLit);
+            DrawCircleGradient(int(pos.x), int(y - 8 * s), 9 * s, withA(eyes, 110), BLANK);
+            eye(0.0f, -8 * s, 2.2f * s);
+            break;
+        }
+        case Archetype::Choir: {
+            for (int i = 0; i < 5; ++i) {                                      // трубы
+                float px = pos.x - 9 * s + i * 4.5f * s;
+                float ph = (9 - std::abs(2 - i) * 2) * s;
+                DrawRectangleRounded(Rectangle{ px - 1.4f * s, y - 10 * s - ph, 2.8f * s, ph },
+                                     0.5f, 3, scaleC(body, 0.6f));
+            }
+            DrawTriangle(Vector2{ pos.x - 8 * s, y + 11 * s }, Vector2{ pos.x, y - 11 * s },
+                         Vector2{ pos.x + 8 * s, y + 11 * s }, body);          // ряса
+            DrawTriangle(Vector2{ pos.x - 4 * s, y + 11 * s }, Vector2{ pos.x, y - 9 * s },
+                         Vector2{ pos.x + 4 * s, y + 11 * s }, lit);
+            for (int i = 0; i < 3; ++i) {                                      // рты
+                float my = y - 5 * s + i * 6 * s;
+                float open = 1.4f * s + 1.6f * s * std::abs(std::sin(t * 2.2f + i));
+                DrawEllipse(int(pos.x), int(my), int(2.6f * s), int(open), hex(0x0A0610));
+                DrawEllipseLines(int(pos.x), int(my), 2.6f * s, open, withA(pal::Bone, 190));
+            }
+            eye(-4.5f * s, -7 * s, 0.9f * s);
+            eye(4.5f * s, -7 * s, 0.9f * s);
+            break;
+        }
+        case Archetype::Doll: {
+            Color wax = lerpC(hex(0xEADAC0), body, 0.3f);
+            for (int k = -1; k <= 1; k += 2) {                                 // конечности
+                blob(Vector2{ pos.x + k * 5 * s, y + 9 * s }, 2.4f * s, 4.5f * s,
+                     scaleC(wax, 0.5f), wax, 3);
+                blob(Vector2{ pos.x + k * 9 * s, y + 1 * s }, 2.2f * s, 4.0f * s,
+                     scaleC(wax, 0.5f), wax, 3);
+            }
+            blob(Vector2{ pos.x, y + 3 * s }, 7 * s, 8 * s, scaleC(wax, 0.45f), wax, 5);
+            for (int i = 0; i < 4; ++i)                                        // шов
+                DrawLineEx(Vector2{ pos.x - 1.5f * s, y - 2 * s + i * 3 * s },
+                           Vector2{ pos.x + 1.5f * s, y - 1 * s + i * 3 * s }, 0.9f * s,
+                           hex(0x4A3A30));
+            blob(Vector2{ pos.x, y - 8 * s }, 6.5f * s, 6.5f * s, scaleC(wax, 0.45f), wax, 5);
+            eye(-2.4f * s, -8.5f * s, 1.2f * s);
+            eye(2.4f * s, -8.5f * s, 1.2f * s);
+            DrawCircleV(Vector2{ pos.x - 4.5f * s, y - 6 * s }, 1.4f * s, withA(pal::Blood, 110));
+            DrawCircleV(Vector2{ pos.x + 4.5f * s, y - 6 * s }, 1.4f * s, withA(pal::Blood, 110));
+            DrawLineEx(Vector2{ pos.x - 2 * s, y - 4.5f * s },
+                       Vector2{ pos.x + 2 * s, y - 4.5f * s }, 0.9f * s, hex(0x5A2A2A));
+            break;
+        }
+        default: {   // Жнец
+            const int N = 10;
+            Vector2 pts[N];
+            for (int i = 0; i < N; ++i) {
+                float ang = float(i) / N * 6.2832f - 1.5708f;
+                float rad = 1.0f + (hash01(i, int(seed % 503), seed) - 0.5f) * 0.35f;
+                if (std::sin(ang) > 0.2f) rad += 0.18f;
+                pts[i] = Vector2{ pos.x + std::cos(ang) * 9 * s * rad,
+                                  y + std::sin(ang) * 12 * s * rad };
+            }
+            volumePoly(pts, N, Vector2{ pos.x, y }, deep, lit, -2.0f * s, 5);
+            blob(Vector2{ pos.x, y - 8 * s }, 5 * s, 5.5f * s,
+                 scaleC(pal::Bone, 0.5f), pal::Bone, 4);
+            eye(-2.0f * s, -8.5f * s, 1.1f * s);
+            eye(2.0f * s, -8.5f * s, 1.1f * s);
+            for (int i = 0; i < 3; ++i)                                        // зубы
+                DrawLineEx(Vector2{ pos.x - 2 * s + i * 2 * s, y - 5 * s },
+                           Vector2{ pos.x - 2 * s + i * 2 * s, y - 3 * s }, 0.8f * s,
+                           hex(0x07060A));
+            break;
+        }
+    }
+
+    // Стихия подсвечивает фигурку, а тревога — восклицательный знак
+    DrawCircleGradient(int(pos.x), int(y), 20 * s, withA(tint, (unsigned char)(28 + 40 * aggro)), BLANK);
+    if (aggro > 0.35f) {
+        float p = 0.6f + 0.4f * std::sin(t * 9.0f);
+        textC("!", pos.x, y - 26 * s, 15.0f * p + 8.0f, withA(hex(0xFF5A40), 230));
+    }
+}
 // ── Enemy cards / Карты противника ────────────────────────────────────────
 // Противник кладёт на стол свои карты — костяные пластины с процарапанным
 // знаком. Ни рамок Таро, ни позолоты: он играет не по вашим правилам.

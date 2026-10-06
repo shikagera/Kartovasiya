@@ -91,6 +91,7 @@ void Game::init() {
 
 void Game::shutdown() {
     saveMeta(meta_);
+    if (worldTex_.id != 0) UnloadRenderTexture(worldTex_);
     // Незаконченный забег переживает закрытие окна.
     if (scene_ != Scene::Menu && scene_ != Scene::RunEnd) saveRun();
     audio::shutdown();
@@ -286,8 +287,19 @@ void Game::updateOverworld(float dt) {
     }
 }
 
+void Game::ensureWorldTexture() {
+    int w = (sw_ + PIXEL_SCALE - 1) / PIXEL_SCALE;
+    int h = (sh_ + PIXEL_SCALE - 1) / PIXEL_SCALE;
+    if (worldTex_.id != 0 && worldTexW_ == w && worldTexH_ == h) return;
+    if (worldTex_.id != 0) UnloadRenderTexture(worldTex_);
+    worldTex_ = LoadRenderTexture(w, h);
+    SetTextureFilter(worldTex_.texture, TEXTURE_FILTER_POINT);   // без сглаживания
+    worldTexW_ = w; worldTexH_ = h;
+}
+
 void Game::drawOverworld() {
-    world_.draw(time_);
+    drawWorldPixel();
+    art::drawVignette(sw_, sh_, 0.52f);
 
     // ── HUD ───────────────────────────────────────────────────────────────
     panel(Rectangle{ 12, 12, 268, 84 }, 0.85f);
@@ -713,7 +725,18 @@ void Game::updateTablePull(float dt) {
         audio::play(audio::Sfx::TableThud, 1.0f);
     }
     if (pullT_ >= 1.55f) {
-        Enemy e = genEnemy(rng_, depth_ + (pendingBoss_ ? 2 : 0), pendingBoss_);
+        // Бой наследует облик и стихию той фигурки, что стояла на карте.
+        Archetype wantArche = Archetype::COUNT;
+        ElementId wantFlavour = ElementId::None;
+        if (!pendingBoss_ && pendingEnt_ >= 0 && pendingEnt_ < world_.entCount()) {
+            const WorldEnt& we = world_.ent(pendingEnt_);
+            if (we.kind == EntKind::Enemy) {
+                wantArche = Archetype(clampi(we.arche, 0, int(Archetype::COUNT) - 1));
+                wantFlavour = we.flavour;
+            }
+        }
+        Enemy e = genEnemy(rng_, depth_ + (pendingBoss_ ? 2 : 0), pendingBoss_,
+                           wantArche, wantFlavour);
         combat_.begin(&deck_, &player_, std::move(e), depth_ + (pendingBoss_ ? 2 : 0), &rng_);
         // Бой наследует место, где его приняли.
         combat_.setBiome(world_.biomeAt(world_.playerPos()));
@@ -723,8 +746,21 @@ void Game::updateTablePull(float dt) {
     }
 }
 
+// Мир через низкое разрешение: один путь и для оверворлда, и для «достаёт
+// стол», иначе на переходе графика скачет с гладкой на пиксельную.
+void Game::drawWorldPixel() {
+    ensureWorldTexture();
+    BeginTextureMode(worldTex_);
+    world_.draw(time_, worldTexW_, worldTexH_, 1.0f / float(PIXEL_SCALE));
+    EndTextureMode();
+    DrawTexturePro(worldTex_.texture,
+                   Rectangle{ 0, 0, float(worldTexW_), -float(worldTexH_) },
+                   Rectangle{ 0, 0, float(sw_), float(sh_) },
+                   Vector2{ 0, 0 }, 0.0f, WHITE);
+}
+
 void Game::drawTablePull() {
-    world_.draw(time_);
+    drawWorldPixel();
     float k = clampf(pullT_ / 1.55f, 0.0f, 1.0f);
 
     // Затемнение и «схлопывание» камеры
@@ -1261,6 +1297,7 @@ void Game::saveRun() const {
     for (const auto& e : ents) {
         b.i32(int(e.kind)); b.f32(e.pos.x); b.f32(e.pos.y);
         b.i32(e.data); b.u8(e.used ? 1 : 0); b.u8(e.boss ? 1 : 0);
+        b.i32(e.arche); b.i32(int(e.flavour));
         b.f32(e.home.x); b.f32(e.home.y); b.u32(e.seed);
         putLS(b, e.name);
     }
@@ -1320,6 +1357,7 @@ bool Game::loadRun() {
         WorldEnt e;
         e.kind = EntKind(b.ri32()); e.pos.x = b.rf32(); e.pos.y = b.rf32();
         e.data = b.ri32(); e.used = b.ru8() != 0; e.boss = b.ru8() != 0;
+        e.arche = b.ri32(); e.flavour = ElementId(b.ri32());
         e.home.x = b.rf32(); e.home.y = b.rf32(); e.seed = b.ru32();
         e.name = getLS(b);
         ents.push_back(e);
