@@ -8,7 +8,6 @@ namespace shichoy {
 
 enum class MiniGameId : int {
     Timing = 0,   // бегунок по полосе — остановить в зоне
-    Wires,        // протянуть жилы к своим гнёздам мышью
     Seal,         // провести печать по воску с ровной скоростью
     SteadyHand,   // провести курсор по коридору, не задев стенок
     Candles,      // задуть свечи, чередуя A и D
@@ -41,7 +40,6 @@ public:
 private:
     void finish(bool ok, bool great);
     void updTiming(float dt, Rectangle a);
-    void updWires(float dt, Rectangle a);
     void updSeal(float dt, Rectangle a);
     void updSteady(float dt, Rectangle a);
     void updCandles(float dt, Rectangle a);
@@ -50,7 +48,6 @@ private:
     void updCipher(float dt, Rectangle a);
 
     void drawTiming(Rectangle a, float t) const;
-    void drawWires(Rectangle a, float t) const;
     void drawSeal(Rectangle a, float t) const;
     void drawSteady(Rectangle a, float t) const;
     void drawCandles(Rectangle a, float t) const;
@@ -70,12 +67,6 @@ private:
 
     // ── Жилы ──────────────────────────────────────────────────────────────
     static constexpr int MAX_W = 5;
-    int   wireCount_ = 4;
-    int   wireLeft_[MAX_W]{};      // цвет слева (индекс стихии)
-    int   wireRight_[MAX_W]{};     // цвет гнезда справа
-    int   wireLinked_[MAX_W]{};    // к какому гнезду привязана жила, -1 нет
-    int   wireDrag_ = -1;
-    int   wireErrors_ = 0;
 
     // ── Печать ────────────────────────────────────────────────────────────
     float sealX_ = 0.0f, sealPrev_ = 0.0f, sealGood_ = 0.0f, sealBad_ = 0.0f;

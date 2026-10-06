@@ -342,7 +342,14 @@ Color Overworld::groundColor(int x, int y, float time) const {
     float cloud = fbm(x * 0.045f + time * 0.06f, y * 0.045f, seed_ + 31u, 3);
     float lightK = 0.94f + 0.22f * fbm(x * 0.11f, y * 0.11f, seed_ + 5u, 3);
     lightK *= (0.95f + 0.12f * cloud);
-    return scaleC(c, lightK);
+    c = scaleC(c, lightK);
+    // Ступенчатый цвет: плавная заливка из шума после уменьшения читается
+    // как грязь, а ограниченная палитра — как осознанно нарисованный тайл.
+    auto step = [](unsigned char v) -> unsigned char {
+        const int S = 10;                                   // ширина ступени
+        return (unsigned char)clampi(((v + S / 2) / S) * S, 0, 255);
+    };
+    return Color{ step(c.r), step(c.g), step(c.b), c.a };
 }
 
 void Overworld::drawTile(int x, int y, float time) const {
@@ -386,18 +393,32 @@ void Overworld::drawTile(int x, int y, float time) const {
 
     switch (t) {
         case Tile::Water: {
-            // Глубина, рябь и лунный блик
-            DrawRectangleGradientV(int(fx), int(fy), TILE, TILE, withA(hex(0x0A1424), 120), BLANK);
-            for (int i = 0; i < 3; ++i) {
-                float ph = time * 1.4f + x * 0.7f + y * 0.4f + i * 2.1f;
-                float yy = fy + 6 + i * 9 + std::sin(ph) * 2.5f;
-                float w = 10.0f + std::sin(ph * 0.7f) * 6.0f;
-                DrawLineEx(Vector2{ fx + 16 - w * 0.5f, yy }, Vector2{ fx + 16 + w * 0.5f, yy },
-                           0.9f, withA(hex(0x4A6E96), (unsigned char)(26 + 22 * v)));
+            // Глубина считается по соседям, а не градиентом на весь тайл:
+            // сплошная заливка затирала дизеринг берега, и озеро получалось
+            // жёстким синим прямоугольником.
+            int open = 0;
+            if (at(x - 1, y) == Tile::Water) open++;
+            if (at(x + 1, y) == Tile::Water) open++;
+            if (at(x, y - 1) == Tile::Water) open++;
+            if (at(x, y + 1) == Tile::Water) open++;
+            const int WB = TILE / 8;
+            if (open == 4) {
+                // Дно открытой воды — вставка внутрь, края остаются за дизерингом.
+                DrawRectangle(int(fx) + WB, int(fy) + WB, TILE - WB * 2, TILE - WB * 2,
+                              hex(0x1E4568));
+                if (v > 0.5f)
+                    DrawRectangle(int(fx) + WB * 2, int(fy) + WB * 2, TILE - WB * 4,
+                                  TILE - WB * 4, hex(0x183A5A));
             }
-            if (v > 0.90f)
-                DrawCircleV(Vector2{ fx + 8 + v * 14, fy + 10 + v * 10 }, 1.1f,
-                            withA(hex(0xBFD8F0), 70));
+            // Рябь: короткие блочные штрихи, они живут на сетке пикселей
+            for (int i = 0; i < 2; ++i) {
+                float ph = time * 1.1f + x * 0.7f + y * 0.4f + i * 2.1f;
+                int rx = int(hash01(x * 13 + i, y * 7, seed_ + 77u) * 5.0f) + 1;
+                int ry = int(hash01(x * 5, y * 17 + i, seed_ + 83u) * 6.0f) + 1;
+                rx = clampi(rx + int(std::sin(ph) * 1.5f), 1, 5);
+                DrawRectangle(int(fx) + rx * WB, int(fy) + ry * WB, WB * 2, WB,
+                              hex(0x4E86B4));
+            }
             break;
         }
         case Tile::Tree: {
@@ -534,13 +555,16 @@ void Overworld::drawTile(int x, int y, float time) const {
             break;
         }
         case Tile::Mud: {
-            // Лужи с бликом
-            if (v > 0.6f) {
-                float px = fx + 8 + v * 12, py = fy + 10 + v * 10;
-                DrawEllipse(int(px), int(py), int(6 + v * 4), int(3 + v * 2), hex(0x1A2430));
-                DrawEllipseLines(int(px), int(py), 6 + v * 4, 3 + v * 2, withA(hex(0x4A6076), 120));
-                DrawLineEx(Vector2{ px - 3, py - 1 }, Vector2{ px + 2, py - 1 }, 1.0f,
-                           withA(hex(0x93B2CC), 90));
+            // Лужи блоками и в тон земле. Прежние почти чёрно-синие эллипсы
+            // на тёплой грязи читались как россыпь посторонних «таблеток».
+            if (v > 0.78f) {
+                const int MB = TILE / 8;
+                int px = int(hash01(x, y, seed_ + 3u) * 4.0f) + 1;
+                int py = int(hash01(x, y, seed_ + 9u) * 5.0f) + 1;
+                DrawRectangle(int(fx) + px * MB, int(fy) + py * MB, MB * 3, MB * 2,
+                              hex(0x44341F));
+                DrawRectangle(int(fx) + px * MB, int(fy) + py * MB, MB * 2, MB,
+                              hex(0x5A4A32));
             }
             break;
         }

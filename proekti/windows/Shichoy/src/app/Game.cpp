@@ -620,7 +620,7 @@ void Game::resolveDialog(int action) {
             break;
         case 52: {                                            // тайник: вскрыть
             // Замок сам выбирает, каким приёмом его берут.
-            static const MiniGameId locks[3] = { MiniGameId::Wires, MiniGameId::SteadyHand,
+            static const MiniGameId locks[3] = { MiniGameId::Cipher, MiniGameId::SteadyHand,
                                                  MiniGameId::Seal };
             int which = 0;
             if (pendingEnt_ >= 0 && pendingEnt_ < world_.entCount())
@@ -753,9 +753,13 @@ void Game::drawWorldPixel() {
     BeginTextureMode(worldTex_);
     world_.draw(time_, worldTexW_, worldTexH_, 1.0f / float(PIXEL_SCALE));
     EndTextureMode();
+    // Растягиваем ровно в PIXEL_SCALE раз, а не «на весь экран»: 1280/3 не целое,
+    // и дробный масштаб размазывал пиксели неравномерно — отсюда и было мыло.
+    // Лишние пару пикселей уходят за край, это незаметно.
     DrawTexturePro(worldTex_.texture,
                    Rectangle{ 0, 0, float(worldTexW_), -float(worldTexH_) },
-                   Rectangle{ 0, 0, float(sw_), float(sh_) },
+                   Rectangle{ 0, 0, float(worldTexW_ * PIXEL_SCALE),
+                              float(worldTexH_ * PIXEL_SCALE) },
                    Vector2{ 0, 0 }, 0.0f, WHITE);
 }
 

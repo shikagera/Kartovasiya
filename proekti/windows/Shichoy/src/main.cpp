@@ -137,7 +137,8 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i)
         if (std::strcmp(argv[i], "--savetest") == 0) savetest = true;
 
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
+    // Без MSAA: сглаживание краёв — прямая противоположность чёткому пиксель-арту.
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(1280, 720, "Shichoy / Шичой");
     SetWindowMinSize(1024, 640);
     SetTargetFPS(60);
@@ -159,8 +160,8 @@ int main(int argc, char** argv) {
         const char* names[] = { "shot_menu.png", "shot_overworld.png", "shot_combat.png",
                                 "shot_craft.png", "shot_codex.png", "shot_reward.png",
                                 "shot_tablepull.png", "shot_bighand.png",
-                                "mg_timing.png", "mg_wires.png", "mg_seal.png", "mg_steady.png",
-                                "mg_candles.png", "mg_reflex.png", "mg_sequence.png", "mg_cipher.png",
+                                "mg_timing.png", "mg_seal.png", "mg_steady.png", "mg_candles.png",
+                                "mg_reflex.png", "mg_sequence.png", "mg_cipher.png", "",
                                 "", "", "", "",
                                 "en_reaper.png", "en_candelabrum.png", "en_portrait.png",
                                 "en_hound.png", "en_automaton.png", "en_choir.png", "en_doll.png",

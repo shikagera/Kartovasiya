@@ -52,7 +52,6 @@ static void drawStage(Rectangle a, float t) {
 LS MiniGame::title() const {
     switch (id_) {
         case MiniGameId::Timing:     return LS("Верный удар", "The True Stroke");
-        case MiniGameId::Wires:      return LS("Жилы", "The Veins");
         case MiniGameId::Seal:       return LS("Сургучная печать", "The Wax Seal");
         case MiniGameId::SteadyHand: return LS("Твёрдая рука", "A Steady Hand");
         case MiniGameId::Candles:    return LS("Задуть свечи", "Snuff the Candles");
@@ -68,9 +67,6 @@ LS MiniGame::hint() const {
         case MiniGameId::Timing:
             return LS("SPACE или клик — остановить бегунок в зелёной полосе.",
                       "SPACE or click to stop the marker inside the green band.");
-        case MiniGameId::Wires:
-            return LS("Тяни жилу к гнезду того же цвета. Ошибка стоит времени.",
-                      "Drag each vein to the socket of its colour. Mistakes cost time.");
         case MiniGameId::Seal:
             return LS("Зажми кнопку и веди печать вправо ровно — не рвись и не тяни.",
                       "Hold the button and draw the seal right at an even pace.");
@@ -127,32 +123,6 @@ void MiniGame::start(MiniGameId id, float chance, Rng& r) {
             marker_ = rng_.f(0.0f, 1.0f);
             dir_ = rng_.chance(0.5f) ? 1.0f : -1.0f;
             speed_ = 0.85f + (1.0f - chance_) * 0.9f;
-            break;
-        }
-        case MiniGameId::Wires: {
-            wireCount_ = 3 + (ease < 0.5f ? 2 : 1);
-            limit_ = 7.0f + ease * 5.0f;
-            // Цвета обязаны быть разными, иначе пара становится неоднозначной.
-            int pool[MAX_W];
-            for (int i = 0; i < wireCount_; ++i) {
-                int c;
-                bool dup;
-                int guard = 0;
-                static const int distinct[8] = { 1, 2, 5, 7, 10, 11, 13, 9 };  // огонь, вода,
-                // молния, природа, свет, яд, кровь, металл — их не спутать
-                do {
-                    c = distinct[rng_.i(0, 7)];
-                    dup = false;
-                    for (int k = 0; k < i; ++k) if (wireLeft_[k] == c) dup = true;
-                } while (dup && ++guard < 64);
-                wireLeft_[i] = c;
-                pool[i] = c;
-                wireLinked_[i] = -1;
-            }
-            for (int i = wireCount_ - 1; i > 0; --i) std::swap(pool[i], pool[rng_.i(0, i)]);
-            for (int i = 0; i < wireCount_; ++i) wireRight_[i] = pool[i];
-            wireDrag_ = -1;
-            wireErrors_ = 0;
             break;
         }
         case MiniGameId::Seal: {
@@ -237,7 +207,6 @@ void MiniGame::update(float dt, Rectangle a) {
 
     switch (id_) {
         case MiniGameId::Timing:     updTiming(dt, a); break;
-        case MiniGameId::Wires:      updWires(dt, a); break;
         case MiniGameId::Seal:       updSeal(dt, a); break;
         case MiniGameId::SteadyHand: updSteady(dt, a); break;
         case MiniGameId::Candles:    updCandles(dt, a); break;
@@ -272,90 +241,6 @@ void MiniGame::drawTiming(Rectangle a, float t) const {
 }
 
 // ── 2. Жилы ───────────────────────────────────────────────────────────────
-static void wireEnds(Rectangle a, int i, int n, Vector2& l, Vector2& r) {
-    float step = a.height / (n + 1.0f);
-    l = Vector2{ a.x + 46.0f, a.y + step * (i + 1) };
-    r = Vector2{ a.x + a.width - 46.0f, a.y + step * (i + 1) };
-}
-
-void MiniGame::updWires(float, Rectangle a) {
-    Vector2 m = GetMousePosition();
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        for (int i = 0; i < wireCount_; ++i) {
-            if (wireLinked_[i] >= 0) continue;
-            Vector2 l, r; wireEnds(a, i, wireCount_, l, r);
-            if (CheckCollisionPointCircle(m, l, 20.0f)) { wireDrag_ = i; break; }
-        }
-    }
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && wireDrag_ >= 0) {
-        int hit = -1;
-        for (int j = 0; j < wireCount_; ++j) {
-            Vector2 l, r; wireEnds(a, j, wireCount_, l, r);
-            if (CheckCollisionPointCircle(m, r, 22.0f)) { hit = j; break; }
-        }
-        if (hit >= 0) {
-            bool taken = false;
-            for (int k = 0; k < wireCount_; ++k) if (wireLinked_[k] == hit) taken = true;
-            if (!taken && wireRight_[hit] == wireLeft_[wireDrag_]) {
-                wireLinked_[wireDrag_] = hit;
-                audio::play(audio::Sfx::UiClick, 0.6f, 1.2f);
-            } else {
-                wireErrors_++;
-                timer_ += 1.2f;                       // ошибка стоит времени
-                audio::play(audio::Sfx::UiBack, 0.6f);
-            }
-        }
-        wireDrag_ = -1;
-    }
-    int done = 0;
-    for (int i = 0; i < wireCount_; ++i) if (wireLinked_[i] >= 0) done++;
-    if (done == wireCount_) finish(true, wireErrors_ == 0 && timer_ < limit_ * 0.6f);
-}
-
-void MiniGame::drawWires(Rectangle a, float t) const {
-    Vector2 m = GetMousePosition();
-    for (int i = 0; i < wireCount_; ++i) {
-        Vector2 l, r; wireEnds(a, i, wireCount_, l, r);
-        Color cl = elem(ElementId(wireLeft_[i])).primary;
-        Color cr = elem(ElementId(wireRight_[i])).primary;
-        // Латунные гнёзда: ободок с объёмом, утопленное нутро, цветная жила
-        for (int side = 0; side < 2; ++side) {
-            Vector2 p = side ? r : l;
-            Color cc = side ? cr : cl;
-            art::blob(p, 17.0f, 17.0f, hex(0x3A2C14), hex(0xC7A45A), 5);
-            DrawCircleV(p, 11.0f, hex(0x0E0A12));
-            DrawCircleV(p, 8.0f, scaleC(cc, 0.55f));
-            art::blob(p, 6.0f, 6.0f, scaleC(cc, 0.5f), scaleC(cc, 1.7f), 4);
-            DrawCircleLines(int(p.x), int(p.y), 17.0f, withA(hex(0xE8CE92), 120));
-            for (int b = 0; b < 4; ++b) {
-                float ang = b * 1.5708f + 0.4f;
-                DrawCircleV(Vector2{ p.x + std::cos(ang) * 14.0f, p.y + std::sin(ang) * 14.0f },
-                            1.8f, hex(0xE8CE92));
-            }
-        }
-        // Протянутая жила провисает
-        if (wireLinked_[i] >= 0) {
-            Vector2 l2, r2; wireEnds(a, wireLinked_[i], wireCount_, l2, r2);
-            auto pt = [&](float u) {
-                return Vector2{ l.x + (r2.x - l.x) * u,
-                                l.y + (r2.y - l.y) * u + std::sin(u * PI) * 18.0f };
-            };
-            for (int s = 0; s < 24; ++s) {
-                float u0 = s / 24.0f, u1 = (s + 1) / 24.0f;
-                DrawLineEx(pt(u0), pt(u1), 7.0f, scaleC(cl, 0.35f));      // тень шнура
-            }
-            for (int s = 0; s < 24; ++s) {
-                float u0 = s / 24.0f, u1 = (s + 1) / 24.0f;
-                DrawLineEx(pt(u0), pt(u1), 5.0f, cl);
-                if (s % 2 == 0)                                            // витки оплётки
-                    DrawLineEx(pt(u0), pt(u1), 2.0f, scaleC(cl, 1.7f));
-            }
-        } else if (wireDrag_ == i) {
-            DrawLineEx(l, m, 4.0f, withA(cl, 220));
-        }
-    }
-    (void)t;
-}
 
 // ── 3. Сургучная печать ───────────────────────────────────────────────────
 void MiniGame::updSeal(float dt, Rectangle a) {
@@ -706,7 +591,6 @@ void MiniGame::draw(Rectangle a, float t) const {
     drawStage(a, t);
     switch (id_) {
         case MiniGameId::Timing:     drawTiming(a, t); break;
-        case MiniGameId::Wires:      drawWires(a, t); break;
         case MiniGameId::Seal:       drawSeal(a, t); break;
         case MiniGameId::SteadyHand: drawSteady(a, t); break;
         case MiniGameId::Candles:    drawCandles(a, t); break;
