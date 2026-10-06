@@ -19,7 +19,7 @@ Color Card::tint() const {
 static LS spellVerb(SpellEffect e) {
     switch (e) {
         case SpellEffect::Damage:   return LS("Урон",            "Damage");
-        case SpellEffect::Pierce:   return LS("Точный удар",     "Precise hit");
+        case SpellEffect::Pierce:   return LS("Удар сквозь щит", "Guard-piercing hit");
         case SpellEffect::Drain:    return LS("Вытягивание",     "Drain");
         case SpellEffect::Heal:     return LS("Лечение",         "Heal");
         case SpellEffect::Amplify:  return LS("Усиление реакции","Amplify reaction");
@@ -81,7 +81,7 @@ void Card::refreshText() {
                               fmt2("%d hits of %d.", amount, power));
                     break;
                 case SpellEffect::Pierce:
-                    text = LS(fmt("Урон %d строго по выбранной точке.", power),
+                    text = LS(fmt("Урон %d сквозь щит врага.", power),
                               fmt("%d damage to the selected spot.", power));
                     break;
                 default:
@@ -119,7 +119,7 @@ void Card::refreshText() {
     if (has(flags, CardFlags::Wild))
         text = LS(text.ru + " Дикая: принимает стихию метки.", text.en + " Wild: copies the current mark.");
     if (has(flags, CardFlags::Precise))
-        text = LS(text.ru + " Точная: без штрафа по точкам.", text.en + " Precise: no penalty on weak spots.");
+        text = LS(text.ru + " Проходит сквозь щит.", text.en + " Passes through guard.");
 }
 
 // ── Rarity / Редкость ─────────────────────────────────────────────────────
@@ -290,7 +290,7 @@ std::vector<Card> starterDeck(Rng& r) {
         c.refreshText();
         d.push_back(c);
     }
-    {   // гарантированный «точный удар» — чтобы уязвимые точки были доступны с первого забега
+    {   // гарантированный «точный удар»: ответ на щит врага с первого забега
         Card c;
         c.uid = s_uid++;
         c.type = CardType::Spell;

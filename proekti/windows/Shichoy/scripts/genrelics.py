@@ -27,8 +27,8 @@ r("ReactionEcho","Эхо в пустой зале","Echo in an Empty Hall",
   "Каждая реакция срабатывает дважды, по 60% урона.",
   "Every reaction fires twice, at 60% damage each.", PURP, special="ReactionEcho")
 r("SpotHunter","Глаз анатома","The Anatomist's Eye",
-  "По уязвимым точкам не бывает промаха.","Strikes at weak spots never miss.",
-  BONE, special="SpotHunter")
+  "Ваш урон проходит сквозь щит врага.","Your damage passes straight through enemy guard.",
+  BONE, special="GuardBreak")
 r("BloodPact","Кровный уговор","The Blood Pact",
   "+30% урона. Каждая карта стоит 2 HP.","+30% damage. Every card costs 2 HP.",
   BLOOD, special="BloodPact")
@@ -39,8 +39,8 @@ r("Undying","Восковой двойник","The Wax Double",
   "Раз за бой вы переживаете смертельный удар с 1 HP.",
   "Once per fight you survive a lethal blow at 1 HP.", BONE, special="Undying")
 r("Gravedigger","Лопата могильщика","The Gravedigger's Spade",
-  "Разрушенная точка даёт вдвое больше материалов.",
-  "A destroyed weak spot yields twice the materials.", STEEL, special="Gravedigger")
+  "С каждого боя падает заметно больше материалов.",
+  "Every fight yields considerably more materials.", STEEL, rewardRolls=3)
 r("Alembic","Перегонный куб","The Alembic",
   "Слияние сохраняет цепочку: составная карта уходит в колоду.",
   "Merging keeps the chain: the compound card goes to your deck.", TEAL, special="Alembic")
@@ -223,8 +223,9 @@ r("LastStand","Последний рубеж","The Last Stand",
   "Ниже трети здоровья ваш урон удваивается.",
   "Below a third of your health your damage doubles.", BLOOD, 3, special="LastStand")
 r("SpotSplit","Раскол","The Cleaving",
-  "Урон по уязвимой точке задевает и корпус.",
-  "Damage to a weak spot also bites the body.", STEEL, 2, special="SpotSplit")
+  "Весь урон выше на 20%, щит врага больше не держит.",
+  "All damage 20% higher, and enemy guard no longer holds.", STEEL, 2,
+  special="GuardBreak", dmgMul=1.20)
 r("GrimoireStub","Обрывок гримуара","The Grimoire Stub",
   "Карты-заклинания бьют на 30% сильнее.","Spell cards hit 30% harder.", PURP, spellMul=1.30)
 r("InkedFingers","Пальцы в чернилах","Ink-Stained Fingers",
@@ -265,8 +266,9 @@ r("CandleStub","Огарок","The Candle Stub",
   "В конце хода лечение на 4, метка держится на ход дольше.",
   "Heal 4 at end of turn; marks last a turn longer.", LIME, 1, regen=4, markTurns=1)
 r("GlassEye","Стеклянный глаз","The Glass Eye",
-  "По точкам не бывает промаха, урон по ним задевает корпус.",
-  "Weak-spot strikes never miss and bite the body too.", BONE, 6, special="SpotSplit")
+  "Урон проходит сквозь щит, а метка держится на два хода дольше.",
+  "Damage pierces guard, and marks last two turns longer.", BONE, 6,
+  special="GuardBreak", markTurns=2)
 r("DeathMask","Посмертная маска","The Death Mask",
   "Ниже трети здоровья урон удваивается, щит в начале боя 15.",
   "Below a third health your damage doubles; 15 shield each fight.", BONE, 8,

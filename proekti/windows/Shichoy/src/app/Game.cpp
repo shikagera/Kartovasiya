@@ -1124,8 +1124,8 @@ void Game::drawCodex() {
                                  LS("Урон x3.75, пробивает щит врага.",
                                     "x3.75 damage, shreds the enemy guard.") },
             { MergeTier::T3,     LS("ур. II + стихия или ур. I", "tier II + element or tier I"),
-                                 LS("Урон x5 по корпусу и по каждой точке разом.",
-                                    "x5 to the body and every weak spot at once.") },
+                                 LS("Урон x5, бьёт дважды и сквозь щит.",
+                                    "x5 damage, struck twice and straight through guard.") },
             { MergeTier::T3plus, LS("ур. II + ур. II", "tier II + tier II"),
                                  LS("Урон x6.5 по всему, все статусы, оглушение.",
                                     "x6.5 to everything, all statuses, a stun.") },
@@ -1458,7 +1458,7 @@ bool Game::debugSaveRoundTrip() {
     player_.maxHp = 123; player_.hp = 77; player_.baseMaxHp = 123;
     player_.baseCardLimit = 6; player_.drawPerTurn = 7;
     player_.relics.push_back(RelicId::Alembic);
-    player_.relics.push_back(RelicId::SpotHunter);
+    player_.relics.push_back(RelicId::EmberRing);
     player_.addStatus(StatusId::Burn, 3, 2);
     for (int i = 0; i < MATERIAL_COUNT; ++i) inv_.mats[i] = 10 + i;
     for (int i = 0; i < 9; ++i) deck_.addCard(genCard(rng_, 5));

@@ -50,9 +50,9 @@ static std::vector<RelicDef> buildRelics() {
       (void)r; }
     { RelicDef& r = add(RelicId::SpotHunter,
         LS("Глаз анатома", "The Anatomist's Eye"),
-        LS("По уязвимым точкам не бывает промаха.",
-           "Strikes at weak spots never miss."),
-        hex(0xC9B78E), -1, RelicSpecial::SpotHunter);
+        LS("Ваш урон проходит сквозь щит врага.",
+           "Your damage passes straight through enemy guard."),
+        hex(0xC9B78E), -1, RelicSpecial::GuardBreak);
       (void)r; }
     { RelicDef& r = add(RelicId::BloodPact,
         LS("Кровный уговор", "The Blood Pact"),
@@ -74,9 +74,10 @@ static std::vector<RelicDef> buildRelics() {
       (void)r; }
     { RelicDef& r = add(RelicId::Gravedigger,
         LS("Лопата могильщика", "The Gravedigger's Spade"),
-        LS("Разрушенная точка даёт вдвое больше материалов.",
-           "A destroyed weak spot yields twice the materials."),
-        hex(0x8D99AE), -1, RelicSpecial::Gravedigger);
+        LS("С каждого боя падает заметно больше материалов.",
+           "Every fight yields considerably more materials."),
+        hex(0x8D99AE), -1, RelicSpecial::None);
+      r.rewardRolls = 3;
       (void)r; }
     { RelicDef& r = add(RelicId::Alembic,
         LS("Перегонный куб", "The Alembic"),
@@ -509,9 +510,10 @@ static std::vector<RelicDef> buildRelics() {
       (void)r; }
     { RelicDef& r = add(RelicId::SpotSplit,
         LS("Раскол", "The Cleaving"),
-        LS("Урон по уязвимой точке задевает и корпус.",
-           "Damage to a weak spot also bites the body."),
-        hex(0x8D99AE), 2, RelicSpecial::SpotSplit);
+        LS("Весь урон выше на 20%, щит врага больше не держит.",
+           "All damage 20% higher, and enemy guard no longer holds."),
+        hex(0x8D99AE), 2, RelicSpecial::GuardBreak);
+      r.dmgMul = 1.20f;
       (void)r; }
     { RelicDef& r = add(RelicId::GrimoireStub,
         LS("Обрывок гримуара", "The Grimoire Stub"),
@@ -606,9 +608,10 @@ static std::vector<RelicDef> buildRelics() {
       (void)r; }
     { RelicDef& r = add(RelicId::GlassEye,
         LS("Стеклянный глаз", "The Glass Eye"),
-        LS("По точкам не бывает промаха, урон по ним задевает корпус.",
-           "Weak-spot strikes never miss and bite the body too."),
-        hex(0xC9B78E), 6, RelicSpecial::SpotSplit);
+        LS("Урон проходит сквозь щит, а метка держится на два хода дольше.",
+           "Damage pierces guard, and marks last two turns longer."),
+        hex(0xC9B78E), 6, RelicSpecial::GuardBreak);
+      r.markTurns = 2;
       (void)r; }
     { RelicDef& r = add(RelicId::DeathMask,
         LS("Посмертная маска", "The Death Mask"),

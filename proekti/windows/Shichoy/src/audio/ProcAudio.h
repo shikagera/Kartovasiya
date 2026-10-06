@@ -20,7 +20,7 @@ enum class Sfx : int {
     PlayerHurt,    // урон по игроку
     Shield,        // щит
     Heal,          // лечение
-    SpotBreak,     // разрушена уязвимая точка
+    GuardBreak,    // удар прошёл сквозь щит
     PhaseShift,    // враг сменил фазу
     Victory,
     Defeat,

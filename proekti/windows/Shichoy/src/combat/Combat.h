@@ -73,8 +73,6 @@ public:
     bool ultimaUsed() const { return ultimaUsed_; }
     void endTurn();
     void flee();
-    void cycleTarget(int dir);
-    void setTarget(int spotIndex) { target_ = spotIndex; }
     void setBiome(Biome b) { biome_ = b; }
     void setAscension(const Ascension& a) { asc_ = a; }
     const Ascension& ascension() const { return asc_; }
@@ -87,7 +85,6 @@ public:
     const std::vector<Card>& hand() const { return hand_; }
     int cardsLeft() const { return cardsLeft_; }
     int cardLimit() const { return cardLimit_; }
-    int target() const { return target_; }
     int turn() const { return turn_; }
     ElementId mark() const { return mark_; }
     int markTurns() const { return markTurns_; }
@@ -122,8 +119,9 @@ private:
     void startPlayerTurn();
     void runEnemyTurn();
     void tickStatusesEndOfRound();
+    // pierceGuard — удар проходит сквозь щит врага.
     // catMul — множитель категории карты (стихия/заклинание/реакция/слияние).
-    int  dealDamageToEnemy(int dmg, bool precise, Color col, float catMul = 1.0f);
+    int  dealDamageToEnemy(int dmg, bool pierceGuard, Color col, float catMul = 1.0f);
     void damagePlayer(int dmg, const LS& src);
     // Всё лечение игрока идёт сюда: ступень нисхождения режет его целиком.
     int  healPlayer(int amount);
@@ -134,7 +132,6 @@ private:
     void resolveSpell(const Card& c);
     void resolveEffect(const Card& c);
     void onVictory();
-    void breakSpot(int index);
 
     Deck*  deck_ = nullptr;
     Player* player_ = nullptr;
@@ -152,7 +149,6 @@ private:
     int   cardsLeft_ = 5;
     int   cardLimit_ = 5;
     int   turn_ = 1;
-    int   target_ = -1;          // -1 = корпус (авто-наведение)
     ElementId mark_ = ElementId::None;
     int   markTurns_ = 0;
     Biome biome_ = Biome::Meadow;   // где принят бой
@@ -171,7 +167,5 @@ private:
     LS    lastReaction_;
     LS    telegraph_;
 };
-
-Vector2 spotScreenPos(const Enemy& e, int index, Vector2 center, float size);
 
 } // namespace shichoy

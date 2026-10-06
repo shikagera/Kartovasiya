@@ -144,8 +144,8 @@ static LS buildEffect(MergeTier tier, const std::vector<ElementId>& chain) {
             snprintf(en, sizeof en, "x3.75 damage. Shreds guard, chain statuses amplified.");
             break;
         case MergeTier::T3:
-            snprintf(ru, sizeof ru, "Урон x5 по корпусу и по каждой уязвимой точке разом.");
-            snprintf(en, sizeof en, "x5 to the body and to every weak spot at once.");
+            snprintf(ru, sizeof ru, "Урон x5: бьёт дважды и сквозь щит.");
+            snprintf(en, sizeof en, "x5 damage, struck twice and through guard.");
             break;
         case MergeTier::T3plus:
             snprintf(ru, sizeof ru, "Урон x6.5 по всему, все статусы цепи и оглушение на ход.");

@@ -39,20 +39,9 @@ void Game::updateCombat(float dt) {
     Vector2 ec = enemyCenter(sw_, sh_);
     float es = 100.0f * enemyScale(sh_);
 
-    // Наведение мышью на уязвимые точки
-    hoverSpot_ = -1;
     Vector2 m = GetMousePosition();
-    for (int i = 0; i < int(e.spots.size()); ++i) {
-        if (e.spots[size_t(i)].destroyed) continue;
-        Vector2 p = spotScreenPos(e, i, ec, es);
-        if (CheckCollisionPointCircle(m, p, 24.0f)) hoverSpot_ = i;
-    }
 
     if (combat_.state() == CombatState::PlayerTurn) {
-        if (IsKeyPressed(KEY_TAB)) combat_.cycleTarget(1);
-        if (hoverSpot_ >= 0 && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) combat_.setTarget(hoverSpot_);
-        if (IsKeyPressed(KEY_Q)) combat_.setTarget(-1);
-
         for (int i = 0; i < 9; ++i)
             if (IsKeyPressed(KEY_ONE + i)) combat_.playCard(i);
 
@@ -114,7 +103,6 @@ void Game::updateCombat(float dt) {
             if (dragging_ && dragCard_ >= 0 && dragCard_ < n) {
                 if (dropPlay_) {
                     // Бросок над столом — розыгрыш; попали в точку — она и цель.
-                    if (hoverSpot_ >= 0) combat_.setTarget(hoverSpot_);
                     if (combat_.canPlay(dragCard_)) {
                         bool merged = combat_.hand()[size_t(dragCard_)].tier != MergeTier::Base;
                         combat_.playCard(dragCard_);
@@ -477,33 +465,6 @@ void Game::drawCombat() {
     // уходила врагу в грудь.
     drawIntent(Vector2{ sw_ * 0.5f + ox, 96.0f });
 
-    // Уязвимые точки
-    for (int i = 0; i < int(e.spots.size()); ++i) {
-        const WeakSpot& ws = e.spots[size_t(i)];
-        Vector2 p = spotScreenPos(e, i, ec, es);
-        if (ws.destroyed) {
-            DrawCircleLines(int(p.x), int(p.y), 14.0f, withA(hex(0x4A4A54), 140));
-            DrawLineEx(Vector2{ p.x - 9, p.y - 9 }, Vector2{ p.x + 9, p.y + 9 }, 2.0f, withA(hex(0x6A6A74), 170));
-            DrawLineEx(Vector2{ p.x - 9, p.y + 9 }, Vector2{ p.x + 9, p.y - 9 }, 2.0f, withA(hex(0x6A6A74), 170));
-            continue;
-        }
-        bool sel = (combat_.target() == i);
-        bool hov = (hoverSpot_ == i);
-        Color rc = sel ? art::pal::GoldLit : (hov ? art::pal::Gold : withA(art::pal::Bone, 190));
-        float pulse = 1.0f + 0.08f * std::sin(time_ * 4.0f + i);
-        DrawCircleV(p, 18.0f, withA(BLACK, 120));
-        DrawPolyLinesEx(p, 6, 17.0f * pulse, time_ * 25.0f, sel ? 2.6f : 1.6f, rc);
-        if (ws.flash > 0.01f)
-            DrawCircleV(p, 16.0f, withA(art::pal::Risk, (unsigned char)(160 * ws.flash)));
-        // маленькая шкала прочности
-        Rectangle hb{ p.x - 20, p.y + 22, 40, 5 };
-        DrawRectangle(int(hb.x), int(hb.y), int(hb.width), int(hb.height), hex(0x1A141C));
-        DrawRectangle(int(hb.x), int(hb.y), int(hb.width * (float(ws.hp) / ws.maxHp)), int(hb.height),
-                      lerpC(art::pal::Blood, art::pal::GoldLit, 0.4f));
-        if (hov || sel)
-            art::textC(ws.name.c_str(), p.x, p.y - 40.0f, 13.0f, rc);
-    }
-
     // ── HUD врага ─────────────────────────────────────────────────────────
     Rectangle ehp{ sw_ * 0.5f - 300.0f, 34.0f, 600.0f, 22.0f };
     char nb[192];
@@ -564,9 +525,8 @@ void Game::drawCombat() {
 
             for (int i = 0; i < pn; ++i) {
                 const EnemyMove& mv = ph.moves[size_t(i)];
-                bool dead = mv.spotIndex >= 0 && mv.spotIndex < int(e.spots.size())
-                         && e.spots[size_t(mv.spotIndex)].destroyed;
-                bool active = (i == e.moveIndex) && !dead;
+                const bool dead = false;            // приёмы больше не выпадают
+                bool active = (i == e.moveIndex);
                 Rectangle r{ x0 + i * (cw + gap), y, cw, ch };
                 if (active) r.y -= 10.0f;
                 // Открыт только ближайший приём — остальные рубашкой вверх.
@@ -664,18 +624,6 @@ void Game::drawCombat() {
         Vector2 p{ php.x + 8.0f + i * 15.0f, php.y + 56.0f };
         if (i < combat_.cardsLeft()) DrawCircleV(p, 5.0f, art::pal::GoldLit);
         else                          DrawCircleLines(int(p.x), int(p.y), 5.0f, withA(art::pal::Gold, 130));
-    }
-
-    // Цель
-    {
-        const char* tgt = combat_.target() < 0
-            ? (g_lang == Lang::Ru ? "Цель: корпус (авто)" : "Target: body (auto)")
-            : e.spots[size_t(combat_.target())].name.c_str();
-        char tb[160];
-        snprintf(tb, sizeof tb, g_lang == Lang::Ru ? "%s   [TAB] сменить  [Q] сброс"
-                                                   : "%s   [TAB] switch  [Q] clear", tgt);
-        art::text(tb, php.x, php.y + 74.0f, 14.0f,
-                  combat_.target() < 0 ? withA(art::pal::Vellum, 200) : art::pal::GoldLit);
     }
 
     // ── журнал боя ────────────────────────────────────────────────────────

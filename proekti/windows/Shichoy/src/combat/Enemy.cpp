@@ -9,14 +9,7 @@ const EnemyMove* Enemy::currentMove() const {
     if (phases.empty()) return nullptr;
     const EnemyPhase& ph = phases[size_t(clampi(phase, 0, int(phases.size()) - 1))];
     if (ph.moves.empty()) return nullptr;
-    // Приёмы, завязанные на разрушенные точки, выпадают из паттерна.
     int n = int(ph.moves.size());
-    for (int k = 0; k < n; ++k) {
-        const EnemyMove& m = ph.moves[size_t((moveIndex + k) % n)];
-        if (m.spotIndex >= 0 && m.spotIndex < int(spots.size()) && spots[size_t(m.spotIndex)].destroyed)
-            continue;
-        return &m;
-    }
     return &ph.moves[size_t(moveIndex % n)];
 }
 
@@ -25,15 +18,6 @@ void Enemy::advanceMove() {
     const EnemyPhase& ph = phases[size_t(clampi(phase, 0, int(phases.size()) - 1))];
     if (ph.moves.empty()) return;
     int n = int(ph.moves.size());
-    // сдвигаемся на следующий доступный приём
-    for (int k = 1; k <= n; ++k) {
-        int idx = (moveIndex + k) % n;
-        const EnemyMove& m = ph.moves[size_t(idx)];
-        if (m.spotIndex >= 0 && m.spotIndex < int(spots.size()) && spots[size_t(m.spotIndex)].destroyed)
-            continue;
-        moveIndex = idx;
-        return;
-    }
     moveIndex = (moveIndex + 1) % n;
 }
 
@@ -237,25 +221,6 @@ static EnemyMove makeMove(Rng& r, int depth, MoveKind k, ElementId fl) {
     return m;
 }
 
-static WeakSpot makeSpot(Rng& r, int depth, int i, bool boss) {
-    static const LS names[] = {
-        LS("Витражный глаз", "Stained Eye"), LS("Костяная длань", "Bone Hand"),
-        LS("Гербовая цепь", "Armorial Chain"), LS("Восковое сердце", "Waxen Heart"),
-        LS("Челюсть", "Jaw"), LS("Хребет", "Spine"), LS("Канделябр", "Candelabrum"),
-    };
-    WeakSpot s;
-    s.name = names[size_t(r.i(0, 6))];
-    s.maxHp = int((10 + depth * 3.0f) * (boss ? 1.6f : 1.0f) * r.f(0.85f, 1.2f));
-    s.hp = s.maxHp;
-    // Точки распределяем по обе стороны тела, чтобы они не слипались.
-    float side = (i % 2 == 0) ? -1.0f : 1.0f;
-    s.offset = Vector2{ side * r.f(0.30f, 0.48f), -0.30f + i * 0.22f + r.f(-0.06f, 0.06f) };
-    static const SpotBreak breaks[] = { SpotBreak::RemoveMove, SpotBreak::Stagger,
-                                        SpotBreak::Expose, SpotBreak::ForcePhase };
-    s.onBreak = breaks[size_t(r.i(0, boss ? 3 : 2))];
-    return s;
-}
-
 Enemy genEnemy(Rng& r, int depth, bool boss, Archetype forcedArche, ElementId forcedFlavour) {
     Enemy e;
     e.seed = uint32_t(r.next());
@@ -287,9 +252,6 @@ Enemy genEnemy(Rng& r, int depth, bool boss, Archetype forcedArche, ElementId fo
     if (e.arche == Archetype::Hound) e.actions++;              // пёс бьёт чаще
     if (e.arche == Archetype::Automaton) e.guard += 4 + depth; // и сразу в броне
 
-    int spotCount = boss ? r.i(2, 3) : (depth >= 2 ? r.i(1, 2) : r.i(0, 1));
-    for (int i = 0; i < spotCount; ++i) e.spots.push_back(makeSpot(r, depth, i, boss));
-
     int phaseCount = boss ? 3 : (depth >= 4 ? 2 : 1);
     for (int p = 0; p < phaseCount; ++p) {
         EnemyPhase ph;
@@ -309,13 +271,6 @@ Enemy genEnemy(Rng& r, int depth, bool boss, Archetype forcedArche, ElementId fo
             EnemyMove m = makeMove(r, depth + p, k, e.flavour);
             flavourMove(m, e.arche);
             m.damage = int(m.damage * (1.0f + 0.18f * p));
-            // Привязываем часть приёмов к уязвимым точкам.
-            if (!e.spots.empty() && r.chance(0.5f)) {
-                m.spotIndex = r.i(0, int(e.spots.size()) - 1);
-                m.fromSpot = true;
-                if (e.spots[size_t(m.spotIndex)].linkedMove < 0)
-                    e.spots[size_t(m.spotIndex)].linkedMove = i;
-            }
             ph.moves.push_back(m);
         }
         e.phases.push_back(std::move(ph));
@@ -481,8 +436,6 @@ Enemy genNamedBoss(Rng& r, int depth, int index) {
         m.name = d.sigName;
         m.telegraph = d.sigTelegraph;
         m.damage = d.sigDamage + depth;
-        m.fromSpot = false;
-        m.spotIndex = -1;
         e.phases.back().moves.push_back(std::move(m));
     }
     return e;

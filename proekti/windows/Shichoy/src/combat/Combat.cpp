@@ -25,12 +25,6 @@ void Player::removeNegative() {
     }), statuses.end());
 }
 
-Vector2 spotScreenPos(const Enemy& e, int index, Vector2 center, float size) {
-    if (index < 0 || index >= int(e.spots.size())) return center;
-    const WeakSpot& s = e.spots[size_t(index)];
-    return Vector2{ center.x + s.offset.x * size * 1.35f, center.y + s.offset.y * size * 1.70f };
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────
 static std::string num(int v) { char b[24]; snprintf(b, sizeof b, "%d", v); return b; }
 
@@ -69,7 +63,6 @@ void Combat::begin(Deck* deck, Player* player, Enemy enemy, int depth, Rng* rng)
     rewards_ = CombatRewards{};
     state_ = CombatState::PlayerTurn;
     turn_ = 1;
-    target_ = -1;
     mark_ = ElementId::None;
     markTurns_ = 0;
     ampBonus_ = 0.0f;
@@ -126,18 +119,6 @@ void Combat::discardHand() {
     hand_.clear();
 }
 
-void Combat::cycleTarget(int dir) {
-    int n = int(enemy_.spots.size());
-    if (n == 0) { target_ = -1; return; }
-    for (int k = 0; k < n + 1; ++k) {
-        target_ += dir;
-        if (target_ >= n) target_ = -1;
-        if (target_ < -1) target_ = n - 1;
-        if (target_ == -1) return;
-        if (!enemy_.spots[size_t(target_)].destroyed) return;
-    }
-    target_ = -1;
-}
 
 // Место боя усиливает свои стихии — исследование становится подготовкой.
 float Combat::biomeMul(const Card& c) const {
@@ -149,7 +130,7 @@ float Combat::biomeMul(const Card& c) const {
 }
 
 // ── Damage / Урон ─────────────────────────────────────────────────────────
-int Combat::dealDamageToEnemy(int dmg, bool precise, Color col, float catMul) {
+int Combat::dealDamageToEnemy(int dmg, bool pierceGuard, Color col, float catMul) {
     if (dmg <= 0) return 0;
 
     // Общий множитель реликвий плюс множитель категории (стихия, заклинание,
@@ -172,13 +153,20 @@ int Combat::dealDamageToEnemy(int dmg, bool precise, Color col, float catMul) {
     // Модификаторы: Разряд, Уязвимость, Коррозия, обнажённая цель
     int shock = enemy_.statusStacks(StatusId::Shock);
     if (shock > 0) { dmg += shock; enemy_.removeStatus(StatusId::Shock); }
-    if (enemy_.statusStacks(StatusId::Vulnerable) > 0 || enemy_.exposed) dmg = int(dmg * 1.5f);
+    if (enemy_.statusStacks(StatusId::Vulnerable) > 0) dmg = int(dmg * 1.5f);
     int corr = enemy_.statusStacks(StatusId::Corrode);
     if (corr > 0) dmg += corr;
     if (hasSpecial(player_->relics, RelicSpecial::BloodPact)) dmg = int(dmg * 1.30f);
 
-    // Щит врага
-    if (enemy_.guard > 0) {
+    // Щит врага. «Точные» карты и Глаз анатома проходят сквозь него — это
+    // и есть новая роль Pierce после отказа от уязвимых точек.
+    if (pierceGuard || hasSpecial(player_->relics, RelicSpecial::GuardBreak)) {
+        if (enemy_.guard > 0) {
+            pushFloat(g_lang == Lang::Ru ? "насквозь" : "pierced",
+                      Vector2{ 0, -42 }, hex(0xF0DC8C), 17.0f);
+            audio::play(audio::Sfx::GuardBreak, 0.8f);
+        }
+    } else if (enemy_.guard > 0) {
         int absorbed = std::min(enemy_.guard, dmg);
         enemy_.guard -= absorbed;
         dmg -= absorbed;
@@ -186,32 +174,8 @@ int Combat::dealDamageToEnemy(int dmg, bool precise, Color col, float catMul) {
     }
     if (dmg <= 0) return 0;
 
-    // Выбранная точка
-    int spot = target_;
-    if (spot >= 0 && spot < int(enemy_.spots.size()) && !enemy_.spots[size_t(spot)].destroyed) {
-        bool focused = player_->statusStacks(StatusId::Focus) > 0
-                    || hasSpecial(player_->relics, RelicSpecial::SpotHunter);
-        if (!precise && !focused && rng_->chance(0.22f)) {
-            audio::play(audio::Sfx::Miss, 0.7f);
-            pushFloat(g_lang == Lang::Ru ? "мимо" : "miss", Vector2{ 0, -20 }, hex(0x8A8A94), 18.0f);
-            pushLog(LS("Удар прошёл мимо точки.", "The strike misses the weak spot."), hex(0x8A8A94));
-            return 0;
-        }
-        // Раскол: доля, уходящая в корпус, не теряется.
-        float share = precise ? 1.0f : 0.65f;
-        if (hasSpecial(player_->relics, RelicSpecial::SpotSplit)) share = 1.0f;
-        int toSpot = int(dmg * share);
-        int toBody = dmg - toSpot;
-        WeakSpot& ws = enemy_.spots[size_t(spot)];
-        ws.hp -= toSpot;
-        ws.flash = 0.4f;
-        pushFloat("-" + num(toSpot), Vector2{ 0, 0 }, col, hitSize(toSpot));
-        enemy_.hp -= toBody;
-        if (ws.hp <= 0) breakSpot(spot);
-    } else {
-        enemy_.hp -= dmg;
-        pushFloat("-" + num(dmg), Vector2{ 0, 0 }, col, hitSize(dmg));
-    }
+    enemy_.hp -= dmg;
+    pushFloat("-" + num(dmg), Vector2{ 0, 0 }, col, hitSize(dmg));
 
     // Чем крупнее кусок здоровья снят, тем дольше стоит кадр и сильнее тряска.
     float frac = enemy_.maxHp > 0 ? float(dmg) / float(enemy_.maxHp) : 0.0f;
@@ -232,36 +196,6 @@ int Combat::dealDamageToEnemy(int dmg, bool precise, Color col, float catMul) {
     }
     if (enemy_.hp <= 0) onVictory();
     return dmg;
-}
-
-void Combat::breakSpot(int index) {
-    WeakSpot& ws = enemy_.spots[size_t(index)];
-    ws.destroyed = true;
-    ws.hp = 0;
-    shake_ = 0.8f;
-    audio::play(audio::Sfx::SpotBreak, 0.95f);
-    pushLog(LS(std::string("Разрушено: ") + ws.name.ru + ".",
-               std::string("Destroyed: ") + ws.name.en + "."), hex(0xF2B333));
-    switch (ws.onBreak) {
-        case SpotBreak::RemoveMove:
-            pushLog(LS("Приём выпал из паттерна.", "A move drops from its pattern."), hex(0x59C772));
-            break;
-        case SpotBreak::Stagger:
-            enemy_.addStatus(StatusId::Stun, 1, 1);
-            pushLog(LS("Оно оглушено.", "It is staggered."), hex(0x59C772));
-            break;
-        case SpotBreak::Expose:
-            enemy_.exposed = true;
-            pushLog(LS("Оно раскрыто: весь урон +50%.", "It is exposed: all damage +50%."), hex(0x59C772));
-            break;
-        case SpotBreak::ForcePhase:
-            enemy_.hp = std::min(enemy_.hp, int(enemy_.maxHp * enemy_.hpFrac() * 0.9f));
-            enemy_.phase = clampi(enemy_.phase + 1, 0, int(enemy_.phases.size()) - 1);
-            enemy_.moveIndex = 0;
-            pushLog(LS("Оно срывается в следующую фазу.", "It lurches into its next phase."), hex(0xF2B333));
-            break;
-    }
-    if (target_ == index) target_ = -1;
 }
 
 int Combat::healPlayer(int amount) {
@@ -401,20 +335,14 @@ void Combat::resolveCompound(const Card& c) {
         enemy_.guard = 0;                                  // пробивает щит
     }
 
-    // С третьего уровня удар накрывает и корпус, и все уязвимые точки разом.
-    int saved = target_;
+    // С третьего уровня удар идёт дважды и насквозь: прежде он вдобавок
+    // накрывал все уязвимые точки разом, но точек больше нет.
     if (rank >= 3) {
-        target_ = -1;
         dealDamageToEnemy(dmg, true, tint, rm.mergeMul);
-        for (int i = 0; i < int(enemy_.spots.size()) && enemy_.alive(); ++i) {
-            if (enemy_.spots[size_t(i)].destroyed) continue;
-            target_ = i;
-            dealDamageToEnemy(dmg / 2, true, tint, rm.mergeMul);
-        }
+        if (enemy_.alive()) dealDamageToEnemy(dmg / 2, true, tint, rm.mergeMul);
     } else {
         dealDamageToEnemy(dmg, has(c.flags, CardFlags::Precise), tint, rm.mergeMul);
     }
-    target_ = saved;
 
     // Статусы всей цепочки — то самое накопление из таблицы уровней.
     int stacks = 1 + rank;
@@ -469,12 +397,8 @@ void Combat::resolveSpell(const Card& c) {
             dealDamageToEnemy(int(c.power * amp), precise, col, rm.spellMul);
             break;
         case SpellEffect::Pierce:
+            // Проходит сквозь щит врага целиком.
             ampBonus_ = 0.0f;
-            if (target_ < 0 && !enemy_.spots.empty()) {
-                // авто-наведение на первую целую точку
-                for (int i = 0; i < int(enemy_.spots.size()); ++i)
-                    if (!enemy_.spots[size_t(i)].destroyed) { target_ = i; break; }
-            }
             dealDamageToEnemy(int(c.power * amp), true, hex(0xF0DC8C), rm.spellMul);
             break;
         case SpellEffect::Volley: {
@@ -819,8 +743,6 @@ void Combat::onVictory() {
     // Материалы: тема врага + бонус за разрушенные точки и боссов.
     int rolls = 2 + depth_ / 3 + (enemy_.boss ? 3 : 0);
     rolls = std::max(1, int(rolls * asc_.rewardMul)) + relicMods(player_->relics).rewardRolls;
-    int spotBonus = hasSpecial(player_->relics, RelicSpecial::Gravedigger) ? 2 : 1;   // Лопата могильщика
-    for (const auto& s : enemy_.spots) if (s.destroyed) rolls += spotBonus;
     for (int i = 0; i < rolls; ++i) {
         int m = rng_->i(0, MATERIAL_COUNT - 1);
         if (rng_->chance(0.45f)) m = eidx(enemy_.flavour) % MATERIAL_COUNT;
@@ -841,7 +763,6 @@ void Combat::update(float dt) {
     reactionFlash_ = std::max(0.0f, reactionFlash_ - dt * 1.6f);
     movePlay_ = std::max(0.0f, movePlay_ - dt * 0.75f);
     enemy_.shake = std::max(0.0f, enemy_.shake - dt * 2.0f);
-    for (auto& s : enemy_.spots) s.flash = std::max(0.0f, s.flash - dt * 2.5f);
 
     for (auto& f : floats_) { f.life -= dt; f.pos.y -= dt * 34.0f; }
     floats_.erase(std::remove_if(floats_.begin(), floats_.end(),

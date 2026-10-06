@@ -13,7 +13,7 @@
 static int runSelftest() {
     using namespace shichoy;
     Rng rng(0xBEEF1234);
-    int wins = 0, losses = 0, stalls = 0, reactions = 0, spotsBroken = 0, maxHand = 0;
+    int wins = 0, losses = 0, stalls = 0, reactions = 0, maxHand = 0;
 
     for (int depth = 1; depth <= 15; ++depth) {
         for (int trial = 0; trial < 12; ++trial) {
@@ -32,7 +32,6 @@ static int runSelftest() {
             int guard = 0;
             while (c.state() != CombatState::Won && c.state() != CombatState::Lost && guard++ < 4000) {
                 if (c.state() == CombatState::PlayerTurn) {
-                    if (rng.chance(0.25f) && !c.enemy().spots.empty()) c.cycleTarget(1);
                     int n = int(c.hand().size());
                     int idx = n > 0 ? rng.i(0, n - 1) : -1;
                     if (idx >= 0 && c.canPlay(idx)) c.playCard(idx);
@@ -44,7 +43,6 @@ static int runSelftest() {
             }
             if (guard >= 4000) { stalls++; continue; }
             if (c.state() == CombatState::Won) wins++; else losses++;
-            for (const auto& s : c.enemy().spots) if (s.destroyed) spotsBroken++;
             for (const auto& l : c.log()) if (l.text.ru.rfind("Реакция", 0) == 0) reactions++;
         }
     }
@@ -112,7 +110,6 @@ static int runSelftest() {
     std::printf("--- selftest ---\n");
     std::printf("combats      : %d wins / %d losses / %d stalls\n", wins, losses, stalls);
     std::printf("reactions    : %d fired\n", reactions);
-    std::printf("weak spots   : %d destroyed\n", spotsBroken);
     std::printf("max hand     : %d cards (no cap)\n", maxHand);
     std::printf("craft ops    : %d, max chance %.0f%% (cap 70%%)\n", crafted, maxChance * 100.0f);
     std::printf("element pairs: %d / 120 resolve\n", pairs);
